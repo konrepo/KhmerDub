@@ -34,8 +34,6 @@ builder.defineCatalogHandler(async ({ id }) => {
             }
         });
 		
-		console.log("HTML length:", data.length);
-
         const $ = cheerio.load(data);
         const metas = [];
 
