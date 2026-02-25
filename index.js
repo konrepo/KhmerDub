@@ -154,8 +154,45 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                 if (playerList.length && playerList[0].file) {
                     const url = playerList[0].file;
-					
-					console.log("FINAL STREAM URL:", url);
+
+                    console.log("FINAL STREAM URL:", url);
+
+                    // 🔥 Handle OK.ru properly
+                    if (url.includes("ok.ru")) {
+                        const okRes = await axios.get(url, {
+                            headers: {
+                                "User-Agent":
+                                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+                            }
+                        });
+
+                        const okHtml = okRes.data;
+
+                        const jsonMatch = okHtml.match(/data-options="([^"]+)"/);
+
+                        if (jsonMatch) {
+                            const decoded = jsonMatch[1]
+                                .replace(/&quot;/g, '"')
+                                .replace(/&amp;/g, '&');
+
+                            const parsed = JSON.parse(decoded);
+
+                            if (parsed.flashvars && parsed.flashvars.metadata) {
+                                const metadata = JSON.parse(parsed.flashvars.metadata);
+
+                                if (metadata.hlsManifestUrl) {
+                                    return {
+                                        streams: [
+                                            {
+                                                title: "KhmerDub",
+                                                url: metadata.hlsManifestUrl
+                                            }
+                                        ]
+                                    };
+                                }
+                            }
+                        }
+                    }
 
                     if (!url.startsWith("blob:")) {
                         return {
@@ -182,8 +219,38 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                 if (iframeMatch) {
                     const url = iframeMatch[1];
-					
-					console.log("FINAL STREAM URL (iframe):", url);
+
+                    console.log("FINAL STREAM URL (iframe):", url);
+
+                    if (url.includes("ok.ru")) {
+                        const okRes = await axios.get(url);
+                        const okHtml = okRes.data;
+
+                        const jsonMatch = okHtml.match(/data-options="([^"]+)"/);
+
+                        if (jsonMatch) {
+                            const decodedData = jsonMatch[1]
+                                .replace(/&quot;/g, '"')
+                                .replace(/&amp;/g, '&');
+
+                            const parsed = JSON.parse(decodedData);
+
+                            if (parsed.flashvars && parsed.flashvars.metadata) {
+                                const metadata = JSON.parse(parsed.flashvars.metadata);
+
+                                if (metadata.hlsManifestUrl) {
+                                    return {
+                                        streams: [
+                                            {
+                                                title: "KhmerDub",
+                                                url: metadata.hlsManifestUrl
+                                            }
+                                        ]
+                                    };
+                                }
+                            }
+                        }
+                    }
 
                     if (!url.startsWith("blob:")) {
                         return {
