@@ -167,27 +167,33 @@ builder.defineStreamHandler(async ({ type, id }) => {
                         });
 
                         const okHtml = okRes.data;
+						
+						console.log("OK.RU PAGE LENGTH:", okHtml.length);
 
-                        const metadataMatch = okHtml.match(/"metadata":"([^"]+)"/);
+                        const videosMatch = okHtml.match(/"videos":\s*(\[[^\]]+\])/);
 
-                        if (metadataMatch) {
-                            const decodedMeta = metadataMatch[1]
-                                .replace(/\\"/g, '"')
-                                .replace(/\\\\/g, '\\');
+                        if (videosMatch) {
+                            try {
+                                const videos = JSON.parse(videosMatch[1]);
 
-                            const metadata = JSON.parse(decodedMeta);
+                                const hlsVideo = videos.find(v => 
+                                    v.url && v.url.includes(".m3u8")
+                                );
 
-                            if (metadata.hlsManifestUrl) {
-                                console.log("EXTRACTED HLS:", metadata.hlsManifestUrl);
+                                if (hlsVideo) {
+                                    console.log("EXTRACTED HLS:", hlsVideo.url);
 
-                                return {
-                                    streams: [
-                                        {
-                                            title: "KhmerDub",
-                                            url: metadata.hlsManifestUrl
-                                        }
-                                    ]
-                                };
+                                    return {
+                                        streams: [
+                                            {
+                                                title: "KhmerDub",
+                                                url: hlsVideo.url
+                                            }
+                                        ]
+                                    };
+                                }
+                            } catch (e) {
+                                console.error("OK.ru parse error:", e.message);
                             }
                         }
                     }
