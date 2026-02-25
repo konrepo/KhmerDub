@@ -87,10 +87,16 @@ builder.defineMetaHandler(async ({ type, id }) => {
 
         $("#latest-videos a[href]").each((i, el) => {
             const link = $(el).attr("href");
-            if (link && link.includes("/videos/")) {
+
+            if (!link) return;
+
+            if (link.includes("/videos/") || link === id) {
                 episodes.push(link);
             }
         });
+
+        // Remove duplicates
+        episodes = [...new Set(episodes)];
 
         episodes = episodes.reverse();
 
