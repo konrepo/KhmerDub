@@ -33,6 +33,8 @@ builder.defineCatalogHandler(async ({ id }) => {
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
             }
         });
+		
+		console.log("HTML length:", data.length);
 
         const $ = cheerio.load(data);
         const metas = [];
