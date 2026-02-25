@@ -62,53 +62,10 @@ builder.defineCatalogHandler(async ({ id }) => {
     }
 });
 
-builder.defineMetaHandler(async ({ type, id }) => {
-    if (type !== "series") return { metas: [] };
+builder.defineMetaHandler(async (args) => {
+    console.log("META ARGS:", JSON.stringify(args));
 
-    try {
-        const decodedUrl = decodeURIComponent(id);
-
-        const { data } = await axios.get(decodedUrl, {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-            }
-        });
-
-        const $ = cheerio.load(data);
-
-        const episodes = [];
-        let epNumber = 1;
-
-        $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
-            .each((i, el) => {
-                const link = $(el).attr("href");
-                if (link) {
-                    episodes.push({
-                        id: link,
-                        season: 1,
-                        episode: epNumber,
-                        name: `Episode ${String(epNumber).padStart(2, "0")}`
-                    });
-                    epNumber++;
-                }
-            });
-
-        return {
-            metas: [
-                {
-                    id,
-                    type: "series",
-                    name: decodedUrl.split("/").filter(Boolean).pop().replace(/-/g, " "),
-                    episodes
-                }
-            ]
-        };
-
-    } catch (err) {
-        console.error("Meta error:", err.message);
-        return { metas: [] };
-    }
+    return { metas: [] };
 });
 
 builder.defineStreamHandler(async () => {
