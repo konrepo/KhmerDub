@@ -146,7 +146,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
             try {
                 let raw = match[1];
 
-                // Clean JS object to valid JSON (same as Kodi)
                 raw = raw.replace(/,\s*([\]}])/g, "$1");
                 raw = raw.replace(/([{,\s])(\w+)\s*:/g, '$1"$2":');
                 raw = raw.replace(/'/g, '"');
@@ -154,14 +153,18 @@ builder.defineStreamHandler(async ({ type, id }) => {
                 const playerList = JSON.parse(raw);
 
                 if (playerList.length && playerList[0].file) {
-                    return {
-                        streams: [
-                            {
-                                title: "KhmerDub",
-                                url: playerList[0].file
-                            }
-                        ]
-                    };
+                    const url = playerList[0].file;
+
+                    if (!url.startsWith("blob:")) {
+                        return {
+                            streams: [
+                                {
+                                    title: "KhmerDub",
+                                    url
+                                }
+                            ]
+                        };
+                    }
                 }
             } catch (e) {
                 console.error("Player list parse error:", e.message);
@@ -174,12 +177,24 @@ builder.defineStreamHandler(async ({ type, id }) => {
             try {
                 const decoded = Buffer.from(base64Match[1], "base64").toString("utf-8");
                 const iframeMatch = decoded.match(/<iframe[^>]+src="(.+?)"/i);
+
                 if (iframeMatch) {
-                    return {
-                        streams: [{ title: "KhmerDub", url: iframeMatch[1] }]
-                    };
+                    const url = iframeMatch[1];
+
+                    if (!url.startsWith("blob:")) {
+                        return {
+                            streams: [
+                                {
+                                    title: "KhmerDub",
+                                    url
+                                }
+                            ]
+                        };
+                    }
                 }
-            } catch {}
+            } catch (e) {
+                console.error("Base64 decode error:", e.message);
+            }
         }
 
         return { streams: [] };
