@@ -120,45 +120,50 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
         const content = data;
 
-        // 1️⃣ Base64 iframe decode
-        const base64Matches = content.match(/Base64\.decode\("(.+?)"\)/);
-        if (base64Matches) {
+        // 1️⃣ options.player_list
+        let match = content.match(/options\.player_list\s*=\s*(\[[^\]]+\])\s*;/s);
+        if (!match) {
+            match = content.match(/const\s+videos\s*=\s*(\[[\s\S]+?\])\s*;/);
+        }
+
+        if (match) {
             try {
-                const decoded = Buffer.from(base64Matches[1], "base64").toString("utf-8");
-                const iframeMatch = decoded.match(/<iframe[^>]+src="(.+?)"/i);
-                if (iframeMatch) {
+                let raw = match[1];
+
+                // Clean JS object to valid JSON (same as Kodi)
+                raw = raw.replace(/,\s*([\]}])/g, "$1");
+                raw = raw.replace(/([{,\s])(\w+)\s*:/g, '$1"$2":');
+                raw = raw.replace(/'/g, '"');
+
+                const playerList = JSON.parse(raw);
+
+                if (playerList.length && playerList[0].file) {
                     return {
                         streams: [
                             {
                                 title: "KhmerDub",
-                                url: iframeMatch[1]
+                                url: playerList[0].file
                             }
                         ]
                     };
                 }
-            } catch {}
+            } catch (e) {
+                console.error("Player list parse error:", e.message);
+            }
         }
 
-        // 2️⃣ Direct patterns (same as Kodi)
-        const patterns = [
-            /['"]?file['"]?\s*:\s*['"]([^'"]+)['"]/i,
-            /<iframe[^>]*src=["']([^"']+)["']/i,
-            /<source[^>]*src=["']([^"']+)["']/i,
-            /playlist:\s*"([^"]+)"/i
-        ];
-
-        for (const pat of patterns) {
-            const match = content.match(pat);
-            if (match && match[1]) {
-                return {
-                    streams: [
-                        {
-                            title: "KhmerDub",
-                            url: match[1]
-                        }
-                    ]
-                };
-            }
+        // 2️⃣ Base64 decode fallback
+        const base64Match = content.match(/Base64\.decode\("(.+?)"\)/);
+        if (base64Match) {
+            try {
+                const decoded = Buffer.from(base64Match[1], "base64").toString("utf-8");
+                const iframeMatch = decoded.match(/<iframe[^>]+src="(.+?)"/i);
+                if (iframeMatch) {
+                    return {
+                        streams: [{ title: "KhmerDub", url: iframeMatch[1] }]
+                    };
+                }
+            } catch {}
         }
 
         return { streams: [] };
