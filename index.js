@@ -136,7 +136,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
         const content = data;
 
-        // 1️⃣ options.player_list
+        // 1️⃣ options.player_list or const videos
         let match = content.match(/options\.player_list\s*=\s*(\[[^\]]+\])\s*;/s);
         if (!match) {
             match = content.match(/const\s+videos\s*=\s*(\[[\s\S]+?\])\s*;/);
@@ -157,8 +157,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                     console.log("FINAL STREAM URL:", url);
 
-                    // 🔥 Handle OK.ru properly
-                    if (url.includes("ok.ru")) {
+                    // 🔥 Handle OK.ru embed properly
+                    if (url.includes("ok.ru/videoembed")) {
                         const okRes = await axios.get(url, {
                             headers: {
                                 "User-Agent":
@@ -168,32 +168,31 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                         const okHtml = okRes.data;
 
-                        const jsonMatch = okHtml.match(/data-options="([^"]+)"/);
+                        const metadataMatch = okHtml.match(/"metadata":"([^"]+)"/);
 
-                        if (jsonMatch) {
-                            const decoded = jsonMatch[1]
-                                .replace(/&quot;/g, '"')
-                                .replace(/&amp;/g, '&');
+                        if (metadataMatch) {
+                            const decodedMeta = metadataMatch[1]
+                                .replace(/\\"/g, '"')
+                                .replace(/\\\\/g, '\\');
 
-                            const parsed = JSON.parse(decoded);
+                            const metadata = JSON.parse(decodedMeta);
 
-                            if (parsed.flashvars && parsed.flashvars.metadata) {
-                                const metadata = JSON.parse(parsed.flashvars.metadata);
+                            if (metadata.hlsManifestUrl) {
+                                console.log("EXTRACTED HLS:", metadata.hlsManifestUrl);
 
-                                if (metadata.hlsManifestUrl) {
-                                    return {
-                                        streams: [
-                                            {
-                                                title: "KhmerDub",
-                                                url: metadata.hlsManifestUrl
-                                            }
-                                        ]
-                                    };
-                                }
+                                return {
+                                    streams: [
+                                        {
+                                            title: "KhmerDub",
+                                            url: metadata.hlsManifestUrl
+                                        }
+                                    ]
+                                };
                             }
                         }
                     }
 
+                    // Return normal URL if not blob
                     if (!url.startsWith("blob:")) {
                         return {
                             streams: [
@@ -222,32 +221,30 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                     console.log("FINAL STREAM URL (iframe):", url);
 
-                    if (url.includes("ok.ru")) {
+                    if (url.includes("ok.ru/videoembed")) {
                         const okRes = await axios.get(url);
                         const okHtml = okRes.data;
 
-                        const jsonMatch = okHtml.match(/data-options="([^"]+)"/);
+                        const metadataMatch = okHtml.match(/"metadata":"([^"]+)"/);
 
-                        if (jsonMatch) {
-                            const decodedData = jsonMatch[1]
-                                .replace(/&quot;/g, '"')
-                                .replace(/&amp;/g, '&');
+                        if (metadataMatch) {
+                            const decodedMeta = metadataMatch[1]
+                                .replace(/\\"/g, '"')
+                                .replace(/\\\\/g, '\\');
 
-                            const parsed = JSON.parse(decodedData);
+                            const metadata = JSON.parse(decodedMeta);
 
-                            if (parsed.flashvars && parsed.flashvars.metadata) {
-                                const metadata = JSON.parse(parsed.flashvars.metadata);
+                            if (metadata.hlsManifestUrl) {
+                                console.log("EXTRACTED HLS:", metadata.hlsManifestUrl);
 
-                                if (metadata.hlsManifestUrl) {
-                                    return {
-                                        streams: [
-                                            {
-                                                title: "KhmerDub",
-                                                url: metadata.hlsManifestUrl
-                                            }
-                                        ]
-                                    };
-                                }
+                                return {
+                                    streams: [
+                                        {
+                                            title: "KhmerDub",
+                                            url: metadata.hlsManifestUrl
+                                        }
+                                    ]
+                                };
                             }
                         }
                     }
