@@ -69,51 +69,6 @@ builder.defineMetaHandler(async ({ type, id }) => {
         const { data } = await axios.get(id, {
             headers: {
                 "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-            }
-        });
-
-        const $ = cheerio.load(data);
-
-        const episodes = [];
-        let epNumber = 1;
-
-        $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
-            .each((i, el) => {
-                const link = $(el).attr("href");
-                if (link) {
-                    episodes.push({
-                        id: link,
-                        season: 1,
-                        episode: epNumber,
-                        name: `Episode ${String(epNumber).padStart(2, "0")}`
-                    });
-                    epNumber++;
-                }
-            });
-
-        return {
-            meta: {
-                id,
-                type: "series",
-                name: id.split("/").filter(Boolean).pop().replace(/-/g, " "),
-                episodes
-            }
-        };
-
-    } catch (err) {
-        console.error("Meta error:", err.message);
-        return { meta: null };
-    }
-});
-
-builder.defineMetaHandler(async ({ type, id }) => {
-    if (type !== "series") return { meta: null };
-
-    try {
-        const { data } = await axios.get(id, {
-            headers: {
-                "User-Agent":
                     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
             }
         });
@@ -152,6 +107,73 @@ builder.defineMetaHandler(async ({ type, id }) => {
     } catch (err) {
         console.error("Meta error:", err.message);
         return { meta: null };
+    }
+});
+
+builder.defineStreamHandler(async ({ type, id }) => {
+    if (type !== "series") return { streams: [] };
+
+    try {
+        const { data } = await axios.get(id, {
+            headers: {
+                "User-Agent":
+                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+            }
+        });
+
+        const content = data;
+
+        // 1️⃣ options.player_list
+        let match = content.match(/options\.player_list\s*=\s*(\[[^\]]+\])\s*;/s);
+        if (!match) {
+            match = content.match(/const\s+videos\s*=\s*(\[[\s\S]+?\])\s*;/);
+        }
+
+        if (match) {
+            try {
+                let raw = match[1];
+
+                // Clean JS object to valid JSON (same as Kodi)
+                raw = raw.replace(/,\s*([\]}])/g, "$1");
+                raw = raw.replace(/([{,\s])(\w+)\s*:/g, '$1"$2":');
+                raw = raw.replace(/'/g, '"');
+
+                const playerList = JSON.parse(raw);
+
+                if (playerList.length && playerList[0].file) {
+                    return {
+                        streams: [
+                            {
+                                title: "KhmerDub",
+                                url: playerList[0].file
+                            }
+                        ]
+                    };
+                }
+            } catch (e) {
+                console.error("Player list parse error:", e.message);
+            }
+        }
+
+        // 2️⃣ Base64 decode fallback
+        const base64Match = content.match(/Base64\.decode\("(.+?)"\)/);
+        if (base64Match) {
+            try {
+                const decoded = Buffer.from(base64Match[1], "base64").toString("utf-8");
+                const iframeMatch = decoded.match(/<iframe[^>]+src="(.+?)"/i);
+                if (iframeMatch) {
+                    return {
+                        streams: [{ title: "KhmerDub", url: iframeMatch[1] }]
+                    };
+                }
+            } catch {}
+        }
+
+        return { streams: [] };
+
+    } catch (err) {
+        console.error("Stream error:", err.message);
+        return { streams: [] };
     }
 });
 
