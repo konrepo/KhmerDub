@@ -169,6 +169,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
                         const okHtml = okRes.data;
 						
 						console.log("OK.RU PAGE LENGTH:", okHtml.length);
+						console.log("OK.RU SAMPLE:", okHtml.substring(0, 1500));
 
                         const videosMatch = okHtml.match(/"videos":\s*(\[[^\]]+\])/);
 
