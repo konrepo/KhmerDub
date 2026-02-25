@@ -154,6 +154,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                 if (playerList.length && playerList[0].file) {
                     const url = playerList[0].file;
+					
+					console.log("FINAL STREAM URL:", url);
 
                     if (!url.startsWith("blob:")) {
                         return {
@@ -180,6 +182,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
                 if (iframeMatch) {
                     const url = iframeMatch[1];
+					
+					console.log("FINAL STREAM URL (iframe):", url);
 
                     if (!url.startsWith("blob:")) {
                         return {
