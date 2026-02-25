@@ -75,7 +75,6 @@ builder.defineMetaHandler(async ({ type, id }) => {
 
         const $ = cheerio.load(data);
 
-        // Extract poster
         let poster = "";
         const imgDiv = $(".album-content-image");
         if (imgDiv.length) {
@@ -95,11 +94,11 @@ builder.defineMetaHandler(async ({ type, id }) => {
 
         episodes = episodes.reverse();
 
-        const formattedEpisodes = episodes.map((link, index) => ({
+        const videos = episodes.map((link, index) => ({
             id: link,
             season: 1,
             episode: index + 1,
-            name: `Episode ${String(index + 1).padStart(2, "0")}`
+            title: `Episode ${String(index + 1).padStart(2, "0")}`
         }));
 
         return {
@@ -108,7 +107,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
                 type: "series",
                 name: id.split("/").filter(Boolean).pop().replace(/-/g, " "),
                 poster,
-                episodes: formattedEpisodes
+                videos
             }
         };
 
