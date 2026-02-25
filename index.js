@@ -107,8 +107,47 @@ builder.defineMetaHandler(async ({ type, id }) => {
     }
 });
 
-builder.defineStreamHandler(async () => {
-    return { streams: [] };
+builder.defineStreamHandler(async ({ type, id }) => {
+    if (type !== "series") return { streams: [] };
+
+    try {
+        const { data } = await axios.get(id, {
+            headers: {
+                "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+            }
+        });
+
+        const html = data;
+
+        // Try common patterns from your Kodi addon
+        const patterns = [
+            /file\s*:\s*["']([^"']+)["']/i,
+            /<iframe[^>]+src="([^"]+)"/i,
+            /<source[^>]+src="([^"]+)"/i,
+            /playlist:\s*"([^"]+)"/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = html.match(pattern);
+            if (match && match[1]) {
+                return {
+                    streams: [
+                        {
+                            title: "KhmerDub",
+                            url: match[1]
+                        }
+                    ]
+                };
+            }
+        }
+
+        return { streams: [] };
+
+    } catch (err) {
+        console.error("Stream error:", err.message);
+        return { streams: [] };
+    }
 });
 
 const port = process.env.PORT || 7000;
