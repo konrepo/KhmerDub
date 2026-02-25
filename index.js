@@ -75,17 +75,24 @@ builder.defineMetaHandler(async ({ type, id }) => {
 
         const $ = cheerio.load(data);
 
+        // Extract poster
+        let poster = "";
+        const imgDiv = $(".album-content-image");
+        if (imgDiv.length) {
+            const style = imgDiv.attr("style") || "";
+            const match = style.match(/url\((.*?)\)/);
+            if (match) poster = match[1];
+        }
+
         let episodes = [];
 
         $("#latest-videos a[href]").each((i, el) => {
             const link = $(el).attr("href");
-
             if (link && link.includes("/videos/")) {
                 episodes.push(link);
             }
         });
 
-        // Oldest first (Kodi reversed list)
         episodes = episodes.reverse();
 
         const formattedEpisodes = episodes.map((link, index) => ({
@@ -100,6 +107,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
                 id,
                 type: "series",
                 name: id.split("/").filter(Boolean).pop().replace(/-/g, " "),
+                poster,
                 episodes: formattedEpisodes
             }
         };
