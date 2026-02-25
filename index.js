@@ -107,8 +107,8 @@ builder.defineMetaHandler(async ({ type, id }) => {
     }
 });
 
-builder.defineStreamHandler(async ({ type, id }) => {
-    if (type !== "series") return { streams: [] };
+builder.defineMetaHandler(async ({ type, id }) => {
+    if (type !== "series") return { meta: null };
 
     try {
         const { data } = await axios.get(id, {
@@ -118,59 +118,40 @@ builder.defineStreamHandler(async ({ type, id }) => {
             }
         });
 
-        const content = data;
+        const $ = cheerio.load(data);
 
-        // 1️⃣ options.player_list
-        let match = content.match(/options\.player_list\s*=\s*(\[[^\]]+\])\s*;/s);
-        if (!match) {
-            match = content.match(/const\s+videos\s*=\s*(\[[\s\S]+?\])\s*;/);
-        }
+        let episodes = [];
 
-        if (match) {
-            try {
-                let raw = match[1];
+        $("#latest-videos a[href]").each((i, el) => {
+            const link = $(el).attr("href");
 
-                // Clean JS object to valid JSON (same as Kodi)
-                raw = raw.replace(/,\s*([\]}])/g, "$1");
-                raw = raw.replace(/([{,\s])(\w+)\s*:/g, '$1"$2":');
-                raw = raw.replace(/'/g, '"');
-
-                const playerList = JSON.parse(raw);
-
-                if (playerList.length && playerList[0].file) {
-                    return {
-                        streams: [
-                            {
-                                title: "KhmerDub",
-                                url: playerList[0].file
-                            }
-                        ]
-                    };
-                }
-            } catch (e) {
-                console.error("Player list parse error:", e.message);
+            if (link && link.includes("/videos/")) {
+                episodes.push(link);
             }
-        }
+        });
 
-        // 2️⃣ Base64 decode fallback
-        const base64Match = content.match(/Base64\.decode\("(.+?)"\)/);
-        if (base64Match) {
-            try {
-                const decoded = Buffer.from(base64Match[1], "base64").toString("utf-8");
-                const iframeMatch = decoded.match(/<iframe[^>]+src="(.+?)"/i);
-                if (iframeMatch) {
-                    return {
-                        streams: [{ title: "KhmerDub", url: iframeMatch[1] }]
-                    };
-                }
-            } catch {}
-        }
+        // Oldest first (Kodi reversed list)
+        episodes = episodes.reverse();
 
-        return { streams: [] };
+        const formattedEpisodes = episodes.map((link, index) => ({
+            id: link,
+            season: 1,
+            episode: index + 1,
+            name: `Episode ${String(index + 1).padStart(2, "0")}`
+        }));
+
+        return {
+            meta: {
+                id,
+                type: "series",
+                name: id.split("/").filter(Boolean).pop().replace(/-/g, " "),
+                episodes: formattedEpisodes
+            }
+        };
 
     } catch (err) {
-        console.error("Stream error:", err.message);
-        return { streams: [] };
+        console.error("Meta error:", err.message);
+        return { meta: null };
     }
 });
 
