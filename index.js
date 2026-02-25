@@ -114,22 +114,41 @@ builder.defineStreamHandler(async ({ type, id }) => {
         const { data } = await axios.get(id, {
             headers: {
                 "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
             }
         });
 
-        const html = data;
+        const content = data;
 
-        // Try common patterns from your Kodi addon
+        // 1️⃣ Base64 iframe decode
+        const base64Matches = content.match(/Base64\.decode\("(.+?)"\)/);
+        if (base64Matches) {
+            try {
+                const decoded = Buffer.from(base64Matches[1], "base64").toString("utf-8");
+                const iframeMatch = decoded.match(/<iframe[^>]+src="(.+?)"/i);
+                if (iframeMatch) {
+                    return {
+                        streams: [
+                            {
+                                title: "KhmerDub",
+                                url: iframeMatch[1]
+                            }
+                        ]
+                    };
+                }
+            } catch {}
+        }
+
+        // 2️⃣ Direct patterns (same as Kodi)
         const patterns = [
-            /file\s*:\s*["']([^"']+)["']/i,
-            /<iframe[^>]+src="([^"]+)"/i,
-            /<source[^>]+src="([^"]+)"/i,
+            /['"]?file['"]?\s*:\s*['"]([^'"]+)['"]/i,
+            /<iframe[^>]*src=["']([^"']+)["']/i,
+            /<source[^>]*src=["']([^"']+)["']/i,
             /playlist:\s*"([^"]+)"/i
         ];
 
-        for (const pattern of patterns) {
-            const match = html.match(pattern);
+        for (const pat of patterns) {
+            const match = content.match(pat);
             if (match && match[1]) {
                 return {
                     streams: [
