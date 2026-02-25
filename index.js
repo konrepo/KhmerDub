@@ -62,9 +62,13 @@ builder.defineCatalogHandler(async ({ id }) => {
     }
 });
 
-builder.defineMetaHandler(async ({ id }) => {
+builder.defineMetaHandler(async ({ type, id }) => {
+    if (type !== "series") return { metas: [] };
+
     try {
-        const { data } = await axios.get(id, {
+        const decodedUrl = decodeURIComponent(id);
+
+        const { data } = await axios.get(decodedUrl, {
             headers: {
                 "User-Agent":
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
@@ -83,9 +87,10 @@ builder.defineMetaHandler(async ({ id }) => {
                     episodes.push({
                         id: link,
                         season: 1,
-                        episode: epNumber++,
-                        name: `Episode ${String(epNumber - 1).padStart(2, "0")}`
+                        episode: epNumber,
+                        name: `Episode ${String(epNumber).padStart(2, "0")}`
                     });
+                    epNumber++;
                 }
             });
 
@@ -94,7 +99,7 @@ builder.defineMetaHandler(async ({ id }) => {
                 {
                     id,
                     type: "series",
-                    name: id.split("/").filter(Boolean).pop().replace(/-/g, " "),
+                    name: decodedUrl.split("/").filter(Boolean).pop().replace(/-/g, " "),
                     episodes
                 }
             ]
