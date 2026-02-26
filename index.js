@@ -21,25 +21,38 @@ const builder = new addonBuilder(manifest);
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-builder.defineCatalogHandler(async ({ id }) => {
+builder.defineCatalogHandler(async ({ id, extra }) => {
     if (id !== "khmerave") return { metas: [] };
 
     try {
-        const url = "https://www.khmeravenue.com/album/";
+        // Pagination support
+        const skip = parseInt(extra?.skip || "0");
+        const page = skip ? Math.floor(skip / 30) + 1 : 1;
+
+        const url = page === 1
+            ? "https://www.khmeravenue.com/album/"
+            : `https://www.khmeravenue.com/album/page/${page}/`;
 
         const { data } = await axios.get(url, {
             headers: {
                 "User-Agent":
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-            }
+            },
+            timeout: 15000
         });
-		
+
         const $ = cheerio.load(data);
         const metas = [];
 
         $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
             const link = $(el).find("a").attr("href");
-            const title = $(el).find("h3").text().trim();
+
+            let title = $(el).find("h3").text().trim();
+            title = title
+                .replace(/&#8217;/g, "'")
+                .replace(/&amp;/g, "&")
+                .replace(/\s+/g, " ")
+                .trim();
 
             const style = $(el).find("div[style]").attr("style") || "";
             const match = style.match(/url\((.*?)\)/);
@@ -50,12 +63,14 @@ builder.defineCatalogHandler(async ({ id }) => {
                     id: link,
                     type: "series",
                     name: title,
-                    poster: poster
+                    poster,
+                    posterShape: "regular"
                 });
             }
         });
 
         return { metas };
+
     } catch (err) {
         console.error("Catalog error:", err.message);
         return { metas: [] };
@@ -70,11 +85,16 @@ builder.defineMetaHandler(async ({ type, id }) => {
             headers: {
                 "User-Agent":
                     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-            }
+            },
+            timeout: 15000
         });
 
         const $ = cheerio.load(data);
 
+        // Series title
+        const pageTitle = $("h1").first().text().trim();
+
+        // Poster
         let poster = "";
         const imgDiv = $(".album-content-image");
         if (imgDiv.length) {
@@ -83,36 +103,37 @@ builder.defineMetaHandler(async ({ type, id }) => {
             if (match) poster = match[1];
         }
 
+        // Collect episode links (exact Kodi selector)
         let episodes = [];
 
-        $("#latest-videos a[href]").each((i, el) => {
-            const link = $(el).attr("href");
+        $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
+            .each((i, el) => {
+                const link = $(el).attr("href");
+                if (link) {
+                    episodes.push(link);
+                }
+            });
 
-            if (!link) return;
-
-            if (link.includes("/videos/") || link === id) {
-                episodes.push(link);
-            }
-        });
-
-        // Remove duplicates
-        episodes = [...new Set(episodes)];
-
-        episodes = episodes.reverse();
+        if (episodes.length) {
+            episodes = [...new Set(episodes)];
+            episodes = episodes.reverse();
+        }
 
         const videos = episodes.map((link, index) => ({
             id: link,
             season: 1,
             episode: index + 1,
-            title: `Episode ${String(index + 1).padStart(2, "0")}`
+            title: `Episode ${String(index + 1).padStart(2, "0")}`,
+            thumbnail: poster
         }));
 
         return {
             meta: {
                 id,
                 type: "series",
-                name: id.split("/").filter(Boolean).pop().replace(/-/g, " "),
+                name: pageTitle || id.split("/").filter(Boolean).pop().replace(/-/g, " "),
                 poster,
+                background: poster,
                 videos
             }
         };
@@ -131,145 +152,49 @@ builder.defineStreamHandler(async ({ type, id }) => {
             headers: {
                 "User-Agent":
                     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-            }
+            },
+            timeout: 15000
         });
 
-        const content = data;
+        const $ = cheerio.load(data);
 
-        // 1️⃣ options.player_list or const videos
-        let match = content.match(/options\.player_list\s*=\s*(\[[^\]]+\])\s*;/s);
-        if (!match) {
-            match = content.match(/const\s+videos\s*=\s*(\[[\s\S]+?\])\s*;/);
+        // Look for OK.ru iframe
+        const iframe = $("iframe[src*='ok.ru']").attr("src");
+
+        if (!iframe) {
+            return { streams: [] };
         }
 
-        if (match) {
-            try {
-                let raw = match[1];
+        console.log("OK.RU EMBED:", iframe);
 
-                raw = raw.replace(/,\s*([\]}])/g, "$1");
-                raw = raw.replace(/([{,\s])(\w+)\s*:/g, '$1"$2":');
-                raw = raw.replace(/'/g, '"');
+        // Fetch OK.ru embed page
+        const okRes = await axios.get(iframe, {
+            headers: {
+                "User-Agent":
+                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+            },
+            timeout: 15000
+        });
 
-                const playerList = JSON.parse(raw);
+        const okHtml = okRes.data;
 
-                if (playerList.length && playerList[0].file) {
-                    const url = playerList[0].file;
+        console.log("OK.RU PAGE LENGTH:", okHtml.length);
 
-                    console.log("FINAL STREAM URL:", url);
+        // Extract direct m3u8 or mp4 link
+        const regex = /https?:\/\/[^\s"'<>]+?\.(?:m3u8|mp4)(?:\?[^\s"'<>]*)?/gi;
+        const matches = okHtml.match(regex);
 
-                    // 🔥 Handle OK.ru embed properly
-                    if (url.includes("ok.ru/videoembed")) {
-                        const okRes = await axios.get(url, {
-                            headers: {
-                                "User-Agent":
-                                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-                            }
-                        });
+        if (matches && matches.length) {
+            console.log("EXTRACTED DIRECT STREAM:", matches[0]);
 
-                        const okHtml = okRes.data;
-						
-						console.log("OK.RU PAGE LENGTH:", okHtml.length);
-						console.log("OK.RU SAMPLE:", okHtml.substring(0, 1500));
-
-                        const videosMatch = okHtml.match(/"videos":\s*(\[[^\]]+\])/);
-
-                        if (videosMatch) {
-                            try {
-                                const videos = JSON.parse(videosMatch[1]);
-
-                                const hlsVideo = videos.find(v => 
-                                    v.url && v.url.includes(".m3u8")
-                                );
-
-                                if (hlsVideo) {
-                                    console.log("EXTRACTED HLS:", hlsVideo.url);
-
-                                    return {
-                                        streams: [
-                                            {
-                                                title: "KhmerDub",
-                                                url: hlsVideo.url
-                                            }
-                                        ]
-                                    };
-                                }
-                            } catch (e) {
-                                console.error("OK.ru parse error:", e.message);
-                            }
-                        }
+            return {
+                streams: [
+                    {
+                        title: "KhmerDub",
+                        url: matches[0]
                     }
-
-                    // Return normal URL if not blob
-                    if (!url.startsWith("blob:")) {
-                        return {
-                            streams: [
-                                {
-                                    title: "KhmerDub",
-                                    url
-                                }
-                            ]
-                        };
-                    }
-                }
-            } catch (e) {
-                console.error("Player list parse error:", e.message);
-            }
-        }
-
-        // 2️⃣ Base64 decode fallback
-        const base64Match = content.match(/Base64\.decode\("(.+?)"\)/);
-        if (base64Match) {
-            try {
-                const decoded = Buffer.from(base64Match[1], "base64").toString("utf-8");
-                const iframeMatch = decoded.match(/<iframe[^>]+src="(.+?)"/i);
-
-                if (iframeMatch) {
-                    const url = iframeMatch[1];
-
-                    console.log("FINAL STREAM URL (iframe):", url);
-
-                    if (url.includes("ok.ru/videoembed")) {
-                        const okRes = await axios.get(url);
-                        const okHtml = okRes.data;
-
-                        const metadataMatch = okHtml.match(/"metadata":"([^"]+)"/);
-
-                        if (metadataMatch) {
-                            const decodedMeta = metadataMatch[1]
-                                .replace(/\\"/g, '"')
-                                .replace(/\\\\/g, '\\');
-
-                            const metadata = JSON.parse(decodedMeta);
-
-                            if (metadata.hlsManifestUrl) {
-                                console.log("EXTRACTED HLS:", metadata.hlsManifestUrl);
-
-                                return {
-                                    streams: [
-                                        {
-                                            title: "KhmerDub",
-                                            url: metadata.hlsManifestUrl
-                                        }
-                                    ]
-                                };
-                            }
-                        }
-                    }
-
-                    if (!url.startsWith("blob:")) {
-                        return {
-                            streams: [
-                                {
-                                    title: "KhmerDub",
-                                    url
-                                }
-                            ]
-                        };
-                    }
-                }
-            } catch (e) {
-                console.error("Base64 decode error:", e.message);
-            }
+                ]
+            };
         }
 
         return { streams: [] };
