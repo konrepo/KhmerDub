@@ -205,56 +205,38 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       timeout: 15000
     });
 
-    const html = typeof okRes.data === "string"
-      ? okRes.data
-      : String(okRes.data);
-
-    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
-	
-	const pos = html.indexOf("ondemandHls");
-	if (pos !== -1) {
-      console.log("=== RAW SNIPPET START ===");
-      console.log(html.slice(pos - 200, pos + 500));
-      console.log("=== RAW SNIPPET END ===");
-	}
-
-    // Extract metadata JSON string
-    const metadataMatch = html.match(/"metadata":"({.*?})"/);
-
-    if (!metadataMatch) {
-      console.log("metadata block not found");
-      return null;
+    let html = okRes.data;
+    if (typeof html !== "string") {
+      html = String(html);
     }
 
-    // Unescape JSON string
-    const metadataString = metadataMatch[1]
-      .replace(/\\"/g, '"')
+    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
+
+    // Decode HTML escaping
+    html = html
+      .replace(/\\&quot;/g, '"')
+      .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    // Parse JSON
-    let metadata;
-    try {
-      metadata = JSON.parse(metadataString);
-    } catch (e) {
-      console.log("metadata JSON parse failed:", e.message);
+    // Print snippet AFTER decoding
+    const pos = html.indexOf("ondemandHls");
+    if (pos !== -1) {
+      console.log("=== DECODED SNIPPET START ===");
+      console.log(html.slice(pos - 200, pos + 500));
+      console.log("=== DECODED SNIPPET END ===");
+    }
+
+    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+
+    if (!match || !match[1]) {
+      console.log("Could not extract ondemandHls after HTML decode");
       return null;
     }
 
-    // Extract HLS
-    if (metadata?.ondemandHls) {
-      console.log("Extracted HLS:", metadata.ondemandHls);
-      return metadata.ondemandHls;
-    }
+    console.log("Extracted HLS:", match[1]);
 
-    // fallback
-    if (metadata?.videos?.length) {
-      console.log("Using MP4 fallback");
-      return metadata.videos[0].url;
-    }
-
-    console.log("No HLS found inside metadata");
-    return null;
+    return match[1];
 
   } catch (err) {
     console.log("OK resolver error:", err.message);
