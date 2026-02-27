@@ -192,6 +192,7 @@ function normalizeOkUrl(url) {
   return url;
 }
 
+
 async function resolveOkRuToDirect(iframeUrl, axios, ua) {
   const okUrl = normalizeOkUrl(iframeUrl);
 
@@ -202,31 +203,22 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 
   const html = okRes.data;
 
-  // Find the metadata JSON inside flashvars
-  const metadataMatch = html.match(/"metadata":"({.+?})"/);
+  // Directly extract ondemandHls
+  const hlsMatch = html.match(/"ondemandHls":"([^"]+)"/);
 
-  if (!metadataMatch) return null;
+  if (hlsMatch && hlsMatch[1]) {
+    return hlsMatch[1]
+      .replace(/\\u0026/g, "&")
+      .replace(/\\\//g, "/");
+  }
 
-  try {
-    // Unescape JSON
-    const jsonStr = metadataMatch[1]
-      .replace(/\\"/g, '"')
-      .replace(/\\u0026/g, '&');
+  // fallback: sometimes mp4 only
+  const mp4Match = html.match(/"url":"(https:[^"]+type=3[^"]+)"/);
 
-    const meta = JSON.parse(jsonStr);
-
-    // meta
-    if (meta?.ondemandHls) {
-      return meta.ondemandHls;
-    }
-
-    // fallback to MP4
-    if (meta?.videos?.length) {
-      return meta.videos[0].url;
-    }
-
-  } catch (e) {
-    console.error("OK metadata parse error:", e.message);
+  if (mp4Match && mp4Match[1]) {
+    return mp4Match[1]
+      .replace(/\\u0026/g, "&")
+      .replace(/\\\//g, "/");
   }
 
   return null;
