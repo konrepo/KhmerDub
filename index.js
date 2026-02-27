@@ -195,60 +195,41 @@ function normalizeOkUrl(url) {
 async function resolveOkRuToDirect(iframeUrl, axios, ua) {
   const okUrl = normalizeOkUrl(iframeUrl);
 
-  // Fetch embed page
   const okRes = await axios.get(okUrl, {
     headers: { "User-Agent": ua, "Referer": "https://ok.ru/" },
     timeout: 15000
   });
-  const okHtml = okRes.data;
 
-  // Find the metadata URL in the HTML
-  const metaMatch = okHtml.match(/https?:\\\/\\\/ok\.ru\\\/dk\?cmd=videoPlayerMetadata[^"'<\s]+/i)
-                 || okHtml.match(/https?:\/\/ok\.ru\/dk\?cmd=videoPlayerMetadata[^"'<\s]+/i);
+  const html = okRes.data;
 
-  if (!metaMatch) {
-    // fallback: direct hls/mp4
-    const direct = okHtml.match(/https?:\/\/[^\s"'<>]+?\.(?:m3u8|mp4)(?:\?[^\s"'<>]*)?/i);
-    return direct?.[0] || null;
-  }
+  // Find the metadata JSON inside flashvars
+  const metadataMatch = html.match(/"metadata":"({.+?})"/);
 
-  // Unescape \/ style
-  const metaUrl = metaMatch[0].replace(/\\\//g, "/");
+  if (!metadataMatch) return null;
 
-  // Fetch metadata JSON
-  const metaRes = await axios.get(metaUrl, {
-    headers: { "User-Agent": ua, "Referer": "https://ok.ru/" },
-    timeout: 15000
-  });
+  try {
+    // Unescape JSON
+    const jsonStr = metadataMatch[1]
+      .replace(/\\"/g, '"')
+      .replace(/\\u0026/g, '&');
 
-  // OK.ru metadata is usually JSON, but sometimes it’s wrapped; handle both
-  let meta = metaRes.data;
-  if (typeof meta === "string") {
-    // If returned as string, try to extract JSON object
-    const jsonMatch = meta.match(/\{[\s\S]*\}/);
-    if (jsonMatch) meta = JSON.parse(jsonMatch[0]);
-    else return null;
-  }
+    const meta = JSON.parse(jsonStr);
 
-  // Look for HLS first
-  const hls =
-    meta?.hlsManifestUrl ||
-    meta?.hls?.url ||
-    meta?.hls;
-
-  if (typeof hls === "string" && hls.startsWith("http")) return hls;
-
-  // Then try MP4 renditions if present
-  const mp4Candidates = [];
-  const videos = meta?.videos || meta?.video || meta?.streams;
-  if (Array.isArray(videos)) {
-    for (const v of videos) {
-      const u = v?.url || v?.src;
-      if (typeof u === "string" && u.includes(".mp4")) mp4Candidates.push(u);
+    // meta
+    if (meta?.ondemandHls) {
+      return meta.ondemandHls;
     }
+
+    // fallback to MP4
+    if (meta?.videos?.length) {
+      return meta.videos[0].url;
+    }
+
+  } catch (e) {
+    console.error("OK metadata parse error:", e.message);
   }
 
-  return mp4Candidates[0] || null;
+  return null;
 }
 
 
