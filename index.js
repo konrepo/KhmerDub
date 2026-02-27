@@ -202,33 +202,43 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
         "User-Agent": ua,
         "Referer": "https://ok.ru/",
       },
-      timeout: 15000,
-      maxRedirects: 5,
-      validateStatus: () => true
+      timeout: 15000
     });
 
-    const html = typeof okRes.data === "string"
-      ? okRes.data
-      : String(okRes.data);
+    let html = okRes.data;
+
+    if (typeof html !== "string") {
+      html = String(html);
+    }
 
     console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
 
-    // Match both escaped and non-escaped patterns robustly
-    const regex = /ondemandHls\\?":\\?"([^"\\]+)/;
-    const match = html.match(regex);
-
-    if (!match || !match[1]) {
-      console.log("Could not extract ondemandHls from embed HTML");
+    // Extract everything from ondemandHls onward
+    const start = html.indexOf("ondemandHls");
+    if (start === -1) {
+      console.log("ondemandHls not found");
       return null;
     }
 
-    const cleanUrl = match[1]
+    const snippet = html.slice(start, start + 1000);
+
+    // Unescape common JSON escapes
+    const cleaned = snippet
       .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
+      .replace(/\\\//g, "/")
+      .replace(/\\"/g, '"');
 
-    console.log("Extracted HLS:", cleanUrl);
+    // Now extract normal URL
+    const match = cleaned.match(/ondemandHls"\s*:\s*"([^"]+)/);
 
-    return cleanUrl;
+    if (!match || !match[1]) {
+      console.log("Failed after cleaning");
+      return null;
+    }
+
+    console.log("Extracted HLS:", match[1]);
+
+    return match[1];
 
   } catch (err) {
     console.log("OK resolver error:", err.message);
