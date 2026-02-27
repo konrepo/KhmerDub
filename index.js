@@ -194,84 +194,44 @@ function normalizeOkUrl(url) {
 
 // Resolver
 async function resolveOkRuToDirect(iframeUrl, axios, ua) {
-  const okUrl = normalizeOkUrl(iframeUrl);
-
   try {
-    // Fetch embed HTML (this is what worked in your earlier output)
+    const okUrl = normalizeOkUrl(iframeUrl);
+
     const okRes = await axios.get(okUrl, {
       headers: {
         "User-Agent": ua,
         "Referer": "https://ok.ru/",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       },
       timeout: 15000,
       maxRedirects: 5,
       validateStatus: () => true
     });
 
-    console.log("OK embed status:", okRes.status);
-    const html = typeof okRes.data === "string" ? okRes.data : String(okRes.data);
+    const html = typeof okRes.data === "string"
+      ? okRes.data
+      : String(okRes.data);
 
-    // Quick signal if OK served an HTML challenge/consent page
     console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
 
-    // Match both escaped and non-escaped forms
-    const hlsMatch =
-      html.match(/\\"ondemandHls\\":\\"([^\\"]+)/) ||
-      html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    // Match both escaped and non-escaped patterns robustly
+    const regex = /ondemandHls\\?":\\?"([^"\\]+)/;
+    const match = html.match(regex);
 
-    if (hlsMatch?.[1]) {
-      const hls = hlsMatch[1]
-        .replace(/\\u0026/g, "&")
-        .replace(/\\\//g, "/");
-      return hls;
-    }
-
-    // If not found, try metadata endpoint, but detect HTML and bail
-    const idMatch = okUrl.match(/videoembed\/(\d+)/);
-    if (!idMatch) return null;
-
-    const videoId = idMatch[1];
-    const metaUrl = `https://ok.ru/dk?cmd=videoPlayerMetadata&mid=${videoId}`;
-
-    const metaRes = await axios.get(metaUrl, {
-      headers: {
-        "User-Agent": ua,
-        "Referer": "https://ok.ru/",
-        "Accept": "application/json,text/plain,*/*"
-      },
-      timeout: 15000,
-      maxRedirects: 5,
-      validateStatus: () => true
-    });
-
-    console.log("Metadata status:", metaRes.status);
-
-    const body = typeof metaRes.data === "string" ? metaRes.data : JSON.stringify(metaRes.data);
-
-    if (body.trim().startsWith("<!DOCTYPE") || body.trim().startsWith("<html")) {
-      console.log("Metadata returned HTML (blocked/redirected)");
-      // optional: print first 200 chars
-      console.log("Metadata HTML head:", body.slice(0, 200));
+    if (!match || !match[1]) {
+      console.log("Could not extract ondemandHls from embed HTML");
       return null;
     }
 
-    let meta;
-    try {
-      meta = typeof metaRes.data === "string" ? JSON.parse(metaRes.data) : metaRes.data;
-    } catch (e) {
-      console.log("Metadata JSON parse failed:", e.message);
-      return null;
-    }
+    const cleanUrl = match[1]
+      .replace(/\\u0026/g, "&")
+      .replace(/\\\//g, "/");
 
-    if (meta?.ondemandHls) return meta.ondemandHls;
-    if (meta?.videos?.length) return meta.videos[0].url;
+    console.log("Extracted HLS:", cleanUrl);
 
-    return null;
+    return cleanUrl;
 
   } catch (err) {
     console.log("OK resolver error:", err.message);
-    if (err.response) console.log("Status:", err.response.status);
     return null;
   }
 }
