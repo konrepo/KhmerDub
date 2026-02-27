@@ -192,29 +192,65 @@ function normalizeOkUrl(url) {
   return url;
 }
 
-
+// Resolver
 async function resolveOkRuToDirect(iframeUrl, axios, ua) {
-  const okUrl = normalizeOkUrl(iframeUrl);
+  try {
+    const okUrl = normalizeOkUrl(iframeUrl);
+    console.log("OK URL:", okUrl);
 
-  const okRes = await axios.get(okUrl, {
-    headers: { "User-Agent": ua, "Referer": "https://ok.ru/" },
-    timeout: 15000
-  });
+    // Extract video ID
+    const idMatch = okUrl.match(/videoembed\/(\d+)/);
+    if (!idMatch) {
+      console.log("Could not extract video ID");
+      return null;
+    }
 
-  const html = okRes.data;
+    const videoId = idMatch[1];
+    console.log("Video ID:", videoId);
 
-  // Match both escaped and non-escaped ondemandHls
-  const hlsMatch =
-    html.match(/\\"ondemandHls\\":\\"([^\\"]+)/) ||
-    html.match(/"ondemandHls":"([^"]+)/);
+    const metaUrl = `https://ok.ru/dk?cmd=videoPlayerMetadata&mid=${videoId}`;
+    console.log("Metadata URL:", metaUrl);
 
-  if (hlsMatch && hlsMatch[1]) {
-    return hlsMatch[1]
-      .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
+    const metaRes = await axios.get(metaUrl, {
+      headers: {
+        "User-Agent": ua,
+        "Referer": "https://ok.ru/"
+      },
+      timeout: 15000
+    });
+
+    console.log("Metadata response type:", typeof metaRes.data);
+
+    const meta = metaRes.data;
+
+    if (!meta) {
+      console.log("Metadata empty");
+      return null;
+    }
+
+    console.log("Metadata keys:", Object.keys(meta));
+
+    if (meta?.ondemandHls) {
+      console.log("Found ondemandHls");
+      return meta.ondemandHls;
+    }
+
+    if (meta?.videos?.length) {
+      console.log("Using MP4 fallback");
+      return meta.videos[0].url;
+    }
+
+    console.log("No HLS or MP4 found in metadata");
+    return null;
+
+  } catch (err) {
+    console.log("OK resolver error:", err.message);
+    if (err.response) {
+      console.log("Status:", err.response.status);
+      console.log("Response data:", err.response.data);
+    }
+    return null;
   }
-
-  return null;
 }
 
 
