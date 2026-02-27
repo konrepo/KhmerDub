@@ -198,7 +198,6 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     const okUrl = normalizeOkUrl(iframeUrl);
     console.log("OK URL:", okUrl);
 
-    // Extract video ID
     const idMatch = okUrl.match(/videoembed\/(\d+)/);
     if (!idMatch) {
       console.log("Could not extract video ID");
@@ -219,13 +218,19 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       timeout: 15000
     });
 
-    console.log("Metadata response type:", typeof metaRes.data);
+    let meta = metaRes.data;
 
-    const meta = metaRes.data;
+    console.log("Metadata response type:", typeof meta);
 
-    if (!meta) {
-      console.log("Metadata empty");
-      return null;
+    // If string, parse it
+    if (typeof meta === "string") {
+      try {
+        meta = JSON.parse(meta);
+        console.log("Parsed metadata JSON successfully");
+      } catch (e) {
+        console.log("JSON parse failed:", e.message);
+        return null;
+      }
     }
 
     console.log("Metadata keys:", Object.keys(meta));
