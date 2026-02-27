@@ -205,40 +205,49 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       timeout: 15000
     });
 
-    let html = okRes.data;
-
-    if (typeof html !== "string") {
-      html = String(html);
-    }
+    const html = typeof okRes.data === "string"
+      ? okRes.data
+      : String(okRes.data);
 
     console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
 
-    // Extract everything from ondemandHls onward
-    const start = html.indexOf("ondemandHls");
-    if (start === -1) {
-      console.log("ondemandHls not found");
+    // Extract metadata JSON string
+    const metadataMatch = html.match(/"metadata":"({.*?})"/);
+
+    if (!metadataMatch) {
+      console.log("metadata block not found");
       return null;
     }
 
-    const snippet = html.slice(start, start + 1000);
-
-    // Unescape common JSON escapes
-    const cleaned = snippet
+    // Unescape JSON string
+    const metadataString = metadataMatch[1]
+      .replace(/\\"/g, '"')
       .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/")
-      .replace(/\\"/g, '"');
+      .replace(/\\\//g, "/");
 
-    // Now extract normal URL
-    const match = cleaned.match(/ondemandHls"\s*:\s*"([^"]+)/);
-
-    if (!match || !match[1]) {
-      console.log("Failed after cleaning");
+    // Parse JSON
+    let metadata;
+    try {
+      metadata = JSON.parse(metadataString);
+    } catch (e) {
+      console.log("metadata JSON parse failed:", e.message);
       return null;
     }
 
-    console.log("Extracted HLS:", match[1]);
+    // Extract HLS
+    if (metadata?.ondemandHls) {
+      console.log("Extracted HLS:", metadata.ondemandHls);
+      return metadata.ondemandHls;
+    }
 
-    return match[1];
+    // fallback
+    if (metadata?.videos?.length) {
+      console.log("Using MP4 fallback");
+      return metadata.videos[0].url;
+    }
+
+    console.log("No HLS found inside metadata");
+    return null;
 
   } catch (err) {
     console.log("OK resolver error:", err.message);
