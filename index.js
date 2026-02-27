@@ -21,11 +21,12 @@ const builder = new addonBuilder(manifest);
 const axios = require("axios");
 const cheerio = require("cheerio");
 
+
 builder.defineCatalogHandler(async ({ id, extra }) => {
     if (id !== "khmerave") return { metas: [] };
 
     try {
-        // Pagination support
+        // Pagination (need to come back on this one)
         const skip = parseInt(extra?.skip || "0");
         const page = skip ? Math.floor(skip / 30) + 1 : 1;
 
@@ -60,7 +61,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
             if (link && title) {
                 metas.push({
-                    id: link,
+                    id: Buffer.from(link).toString("base64"),
                     type: "series",
                     name: title,
                     poster,
@@ -77,11 +78,14 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     }
 });
 
+
 builder.defineMetaHandler(async ({ type, id }) => {
     if (type !== "series") return { meta: null };
+	
+	const realUrl = Buffer.from(id, "base64").toString("utf8");
 
     try {
-        const { data } = await axios.get(id, {
+        const { data } = await axios.get(realUrl, {
             headers: {
                 "User-Agent":
                     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
@@ -103,7 +107,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
             if (match) poster = match[1];
         }
 
-        // Collect episode links (exact Kodi selector)
+        // Episode
         let episodes = [];
 
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
@@ -120,7 +124,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
         }
 
         const videos = episodes.map((link, index) => ({
-            id: link,
+            id: Buffer.from(link).toString("base64"),
             season: 1,
             episode: index + 1,
             title: `Episode ${String(index + 1).padStart(2, "0")}`,
@@ -131,7 +135,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
             meta: {
                 id,
                 type: "series",
-                name: pageTitle || id.split("/").filter(Boolean).pop().replace(/-/g, " "),
+                name: pageTitle || realUrl.split("/").filter(Boolean).pop().replace(/-/g, " "),
                 poster,
                 background: poster,
                 videos
@@ -144,65 +148,184 @@ builder.defineMetaHandler(async ({ type, id }) => {
     }
 });
 
-builder.defineStreamHandler(async ({ type, id }) => {
-    if (type !== "series") return { streams: [] };
 
+function tryExtractVideoCandidateFromKhmerAvenue(html) {
+  // Base64.decode
+  const b64 = html.match(/Base64\.decode\("(.+?)"\)/i);
+  if (b64?.[1]) {
     try {
-        const { data } = await axios.get(id, {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-            },
-            timeout: 15000
-        });
+      const decoded = Buffer.from(b64[1], "base64").toString("utf8");
+      const iframe = decoded.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+      if (iframe?.[1]) return iframe[1];
+    } catch {}
+  }
 
-        const $ = cheerio.load(data);
+  // Common patterns from Kodi (file:, iframe src, source src, playlist)
+  const patterns = [
+    /['"]?file['"]?\s*:\s*['"]([^'"]+)['"]/i,
+    /<iframe[^>]*src=["']([^"']+)["']/i,
+    /<source[^>]*src=["']([^"']+)["']/i,
+    /playlist:\s*["']([^"']+)["']/i
+  ];
 
-        // Look for OK.ru iframe
-        const iframe = $("iframe[src*='ok.ru']").attr("src");
+  for (const re of patterns) {
+    const m = html.match(re);
+    if (m?.[1]) return m[1];
+  }
 
-        if (!iframe) {
-            return { streams: [] };
-        }
+  return null;
+}
 
-        console.log("OK.RU EMBED:", iframe);
 
-        // Fetch OK.ru embed page
-        const okRes = await axios.get(iframe, {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-            },
-            timeout: 15000
-        });
+function htmlUnescape(s) {
+  return (s || "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
 
-        const okHtml = okRes.data;
+function normalizeOkUrl(url) {
+  if (!url) return url;
+  if (url.startsWith("//")) return "https:" + url;
+  return url;
+}
 
-        console.log("OK.RU PAGE LENGTH:", okHtml.length);
+async function resolveOkRuToDirect(iframeUrl, axios, ua) {
+  const okUrl = normalizeOkUrl(iframeUrl);
 
-        // Extract direct m3u8 or mp4 link
-        const regex = /https?:\/\/[^\s"'<>]+?\.(?:m3u8|mp4)(?:\?[^\s"'<>]*)?/gi;
-        const matches = okHtml.match(regex);
+  // Fetch embed page
+  const okRes = await axios.get(okUrl, {
+    headers: { "User-Agent": ua, "Referer": "https://ok.ru/" },
+    timeout: 15000
+  });
+  const okHtml = okRes.data;
 
-        if (matches && matches.length) {
-            console.log("EXTRACTED DIRECT STREAM:", matches[0]);
+  // Find the metadata URL in the HTML
+  const metaMatch = okHtml.match(/https?:\\\/\\\/ok\.ru\\\/dk\?cmd=videoPlayerMetadata[^"'<\s]+/i)
+                 || okHtml.match(/https?:\/\/ok\.ru\/dk\?cmd=videoPlayerMetadata[^"'<\s]+/i);
 
-            return {
-                streams: [
-                    {
-                        title: "KhmerDub",
-                        url: matches[0]
-                    }
-                ]
-            };
-        }
+  if (!metaMatch) {
+    // fallback: direct hls/mp4
+    const direct = okHtml.match(/https?:\/\/[^\s"'<>]+?\.(?:m3u8|mp4)(?:\?[^\s"'<>]*)?/i);
+    return direct?.[0] || null;
+  }
 
-        return { streams: [] };
+  // Unescape \/ style
+  const metaUrl = metaMatch[0].replace(/\\\//g, "/");
 
-    } catch (err) {
-        console.error("Stream error:", err.message);
-        return { streams: [] };
+  // Fetch metadata JSON
+  const metaRes = await axios.get(metaUrl, {
+    headers: { "User-Agent": ua, "Referer": "https://ok.ru/" },
+    timeout: 15000
+  });
+
+  // OK.ru metadata is usually JSON, but sometimes it’s wrapped; handle both
+  let meta = metaRes.data;
+  if (typeof meta === "string") {
+    // If returned as string, try to extract JSON object
+    const jsonMatch = meta.match(/\{[\s\S]*\}/);
+    if (jsonMatch) meta = JSON.parse(jsonMatch[0]);
+    else return null;
+  }
+
+  // Look for HLS first
+  const hls =
+    meta?.hlsManifestUrl ||
+    meta?.hls?.url ||
+    meta?.hls;
+
+  if (typeof hls === "string" && hls.startsWith("http")) return hls;
+
+  // Then try MP4 renditions if present
+  const mp4Candidates = [];
+  const videos = meta?.videos || meta?.video || meta?.streams;
+  if (Array.isArray(videos)) {
+    for (const v of videos) {
+      const u = v?.url || v?.src;
+      if (typeof u === "string" && u.includes(".mp4")) mp4Candidates.push(u);
     }
+  }
+
+  return mp4Candidates[0] || null;
+}
+
+
+builder.defineStreamHandler(async ({ type, id }) => {
+  if (type !== "series") return { streams: [] };
+  
+  const realUrl = Buffer.from(id, "base64").toString("utf8");
+
+  const UA =
+    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
+
+  console.log("STREAM REQUEST:", id);
+
+  try {
+    // Fetch episode page
+    const epRes = await axios.get(realUrl, {
+      headers: {
+        "User-Agent": UA,
+        "Referer": "https://www.khmeravenue.com/"
+      },
+      timeout: 15000
+    });
+
+    const html = epRes.data;
+
+    // Extract candidate link
+    const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+    console.log("Candidate:", candidate);
+
+    if (!candidate) return { streams: [] };
+
+    const cand = normalizeOkUrl(candidate);
+
+    // OK.ru resolver
+    if (cand.includes("ok.ru")) {
+      const direct = await resolveOkRuToDirect(cand, axios, UA);
+      console.log("Direct stream:", direct);
+
+      if (!direct) return { streams: [] };
+
+      return {
+        streams: [
+          {
+            title: "KhmerDub",
+            url: direct,
+            behaviorHints: {
+              notWebReady: true,
+              proxyHeaders: {
+                request: {
+                  Referer: "https://ok.ru/",
+                  "User-Agent": UA
+                }
+              }
+            }
+          }
+        ]
+      };
+    }
+
+    // Direct
+    if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
+      return {
+        streams: [
+          {
+            title: "KhmerDub",
+            url: cand
+          }
+        ]
+      };
+    }
+
+    return { streams: [] };
+
+  } catch (err) {
+    console.error("Stream error:", err.message);
+    return { streams: [] };
+  }
 });
 
 const port = process.env.PORT || 7000;
