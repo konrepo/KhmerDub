@@ -203,20 +203,13 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 
   const html = okRes.data;
 
-  // Directly extract ondemandHls
-  const hlsMatch = html.match(/"ondemandHls":"([^"]+)"/);
+  // Match both escaped and non-escaped ondemandHls
+  const hlsMatch =
+    html.match(/\\"ondemandHls\\":\\"([^\\"]+)/) ||
+    html.match(/"ondemandHls":"([^"]+)/);
 
   if (hlsMatch && hlsMatch[1]) {
     return hlsMatch[1]
-      .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
-  }
-
-  // fallback: sometimes mp4 only
-  const mp4Match = html.match(/"url":"(https:[^"]+type=3[^"]+)"/);
-
-  if (mp4Match && mp4Match[1]) {
-    return mp4Match[1]
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
   }
