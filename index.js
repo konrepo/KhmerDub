@@ -210,6 +210,13 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       : String(okRes.data);
 
     console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
+	
+	const pos = html.indexOf("ondemandHls");
+	if (pos !== -1) {
+      console.log("=== RAW SNIPPET START ===");
+      console.log(html.slice(pos - 200, pos + 500));
+      console.log("=== RAW SNIPPET END ===");
+	}
 
     // Extract metadata JSON string
     const metadataMatch = html.match(/"metadata":"({.*?})"/);
