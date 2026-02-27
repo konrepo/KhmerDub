@@ -194,66 +194,84 @@ function normalizeOkUrl(url) {
 
 // Resolver
 async function resolveOkRuToDirect(iframeUrl, axios, ua) {
-  try {
-    const okUrl = normalizeOkUrl(iframeUrl);
-    console.log("OK URL:", okUrl);
+  const okUrl = normalizeOkUrl(iframeUrl);
 
-    const idMatch = okUrl.match(/videoembed\/(\d+)/);
-    if (!idMatch) {
-      console.log("Could not extract video ID");
-      return null;
+  try {
+    // Fetch embed HTML (this is what worked in your earlier output)
+    const okRes = await axios.get(okUrl, {
+      headers: {
+        "User-Agent": ua,
+        "Referer": "https://ok.ru/",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      },
+      timeout: 15000,
+      maxRedirects: 5,
+      validateStatus: () => true
+    });
+
+    console.log("OK embed status:", okRes.status);
+    const html = typeof okRes.data === "string" ? okRes.data : String(okRes.data);
+
+    // Quick signal if OK served an HTML challenge/consent page
+    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
+
+    // Match both escaped and non-escaped forms
+    const hlsMatch =
+      html.match(/\\"ondemandHls\\":\\"([^\\"]+)/) ||
+      html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+
+    if (hlsMatch?.[1]) {
+      const hls = hlsMatch[1]
+        .replace(/\\u0026/g, "&")
+        .replace(/\\\//g, "/");
+      return hls;
     }
 
-    const videoId = idMatch[1];
-    console.log("Video ID:", videoId);
+    // If not found, try metadata endpoint, but detect HTML and bail
+    const idMatch = okUrl.match(/videoembed\/(\d+)/);
+    if (!idMatch) return null;
 
+    const videoId = idMatch[1];
     const metaUrl = `https://ok.ru/dk?cmd=videoPlayerMetadata&mid=${videoId}`;
-    console.log("Metadata URL:", metaUrl);
 
     const metaRes = await axios.get(metaUrl, {
       headers: {
         "User-Agent": ua,
-        "Referer": "https://ok.ru/"
+        "Referer": "https://ok.ru/",
+        "Accept": "application/json,text/plain,*/*"
       },
-      timeout: 15000
+      timeout: 15000,
+      maxRedirects: 5,
+      validateStatus: () => true
     });
 
-    let meta = metaRes.data;
+    console.log("Metadata status:", metaRes.status);
 
-    console.log("Metadata response type:", typeof meta);
+    const body = typeof metaRes.data === "string" ? metaRes.data : JSON.stringify(metaRes.data);
 
-    // If string, parse it
-    if (typeof meta === "string") {
-      try {
-        meta = JSON.parse(meta);
-        console.log("Parsed metadata JSON successfully");
-      } catch (e) {
-        console.log("JSON parse failed:", e.message);
-        return null;
-      }
+    if (body.trim().startsWith("<!DOCTYPE") || body.trim().startsWith("<html")) {
+      console.log("Metadata returned HTML (blocked/redirected)");
+      // optional: print first 200 chars
+      console.log("Metadata HTML head:", body.slice(0, 200));
+      return null;
     }
 
-    console.log("Metadata keys:", Object.keys(meta));
-
-    if (meta?.ondemandHls) {
-      console.log("Found ondemandHls");
-      return meta.ondemandHls;
+    let meta;
+    try {
+      meta = typeof metaRes.data === "string" ? JSON.parse(metaRes.data) : metaRes.data;
+    } catch (e) {
+      console.log("Metadata JSON parse failed:", e.message);
+      return null;
     }
 
-    if (meta?.videos?.length) {
-      console.log("Using MP4 fallback");
-      return meta.videos[0].url;
-    }
+    if (meta?.ondemandHls) return meta.ondemandHls;
+    if (meta?.videos?.length) return meta.videos[0].url;
 
-    console.log("No HLS or MP4 found in metadata");
     return null;
 
   } catch (err) {
     console.log("OK resolver error:", err.message);
-    if (err.response) {
-      console.log("Status:", err.response.status);
-      console.log("Response data:", err.response.data);
-    }
+    if (err.response) console.log("Status:", err.response.status);
     return null;
   }
 }
