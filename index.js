@@ -215,8 +215,6 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       html = String(html);
     }
 
-    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
-
     // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
@@ -224,34 +222,21 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    // Print snippet AFTER decoding
-    const pos = html.indexOf("ondemandHls");
-    if (pos !== -1) {
-      console.log("=== DECODED SNIPPET START ===");
-      console.log(html.slice(pos - 200, pos + 500));
-      console.log("=== DECODED SNIPPET END ===");
-    }
-
     const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
 
     if (!match || !match[1]) {
-      console.log("Could not extract ondemandHls after HTML decode");
       return null;
     }
-
-    console.log("Extracted HLS:", match[1]);
 
     return match[1];
 
   } catch (err) {
-    console.log("OK resolver error:", err.message);
     return null;
   }
 }
 
 
-// helper functions for ep1
-
+// Helper functions for EP1
 async function handleEpisodeOne(url, UA) {
   try {
     const epRes = await axios.get(url, {
@@ -277,6 +262,8 @@ async function handleEpisodeOne(url, UA) {
         {
           title: "KhmerDub",
           url: direct,
+		  season: 1,
+		  episode: 1,			
           behaviorHints: {
             proxyHeaders: {
               request: {
@@ -338,12 +325,19 @@ builder.defineStreamHandler(async ({ type, id }) => {
       console.log("Direct stream:", direct);
 
       if (!direct) return { streams: [] };
+	  
+      const epNumber = parseInt(
+        realUrl.match(/-(\d+)\//)?.[1] || "1",
+        10
+      );
 
       return {
         streams: [
           {
             title: "KhmerDub",
             url: direct,
+			season: 1,
+			episode: epNumber,
             behaviorHints: {
               notWebReady: true,
               proxyHeaders: {
@@ -358,7 +352,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       };
     }
 
-    // Direct
+    // If candidate is already a direct media URL (.m3u8 or .mp4), return as-is
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
       return {
         streams: [
