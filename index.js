@@ -12,6 +12,9 @@ const manifest = {
             type: "series",
             id: "khmerave",
             name: "KhmerAve"
+            extra: [
+                { name: "skip", isRequired: false }
+			]				
         }
     ]
 };
@@ -26,9 +29,9 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     if (id !== "khmerave") return { metas: [] };
 
     try {
-        // Pagination (need to come back on this one)
         const skip = parseInt(extra?.skip || "0");
-        const page = skip ? Math.floor(skip / 30) + 1 : 1;
+		const WEBSITE_PAGE_SIZE = 18;
+        const page = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
         const url = page === 1
             ? "https://www.khmeravenue.com/album/"
