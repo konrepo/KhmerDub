@@ -107,7 +107,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
             if (match) poster = match[1];
         }
 
-        // Collect episode links
+        // Episode
         let episodes = [];
 
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
@@ -118,38 +118,18 @@ builder.defineMetaHandler(async ({ type, id }) => {
                 }
             });
 
-        // Remove duplicates
-        episodes = [...new Set(episodes)];
+        if (episodes.length) {
+            episodes = [...new Set(episodes)];
+            episodes = episodes.reverse();
+        }
 
-        // Episode 1 = album page, but give it a unique synthetic ID
-        const ep1Url = realUrl + (realUrl.includes("?") ? "&" : "?") + "ep=1";
-
-        // Keep only real /videos/ pages for Episode 2+
-        const epRest = episodes.filter(link => link.includes("/videos/"));
-
-        // Sort Episode 2+ by episode number if present
-        epRest.sort((a, b) => {
-            const numA = parseInt(a.match(/-(\d+)\//)?.[1] || "0", 10);
-            const numB = parseInt(b.match(/-(\d+)\//)?.[1] || "0", 10);
-            return numA - numB;
-        });
-
-        const videos = [
-            {
-                id: Buffer.from(ep1Url).toString("base64"),
-                season: 1,
-                episode: 1,
-                title: "Episode 01",
-                thumbnail: poster
-            },
-            ...epRest.map((link, index) => ({
-                id: Buffer.from(link).toString("base64"),
-                season: 1,
-                episode: index + 2,
-                title: `Episode ${String(index + 2).padStart(2, "0")}`,
-                thumbnail: poster
-            }))
-        ];
+        const videos = episodes.map((link, index) => ({
+            id: Buffer.from(link).toString("base64"),
+            season: 1,
+            episode: index + 1,
+            title: `Episode ${String(index + 1).padStart(2, "0")}`,
+            thumbnail: poster
+        }));
 
         return {
             meta: {
@@ -230,6 +210,8 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       html = String(html);
     }
 
+    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
+
     // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
@@ -237,30 +219,24 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    // Try extracting REAL MP4 from videos block
-    const videosBlockMatch = html.match(/"videos"\s*:\s*\[(.*?)\]/);
-
-    if (videosBlockMatch && videosBlockMatch[1]) {
-      const vdMatch = videosBlockMatch[1].match(
-        /"(https:\/\/vd[0-9\-\.]+okcdn\.ru\/\?[^"]+type=3[^"]*)"/
-      );
-
-      if (vdMatch && vdMatch[1]) {
-        console.log("Extracted REAL MP4:", vdMatch[1]);
-        return vdMatch[1];
-      }
+    // Print snippet AFTER decoding
+    const pos = html.indexOf("ondemandHls");
+    if (pos !== -1) {
+      console.log("=== DECODED SNIPPET START ===");
+      console.log(html.slice(pos - 200, pos + 500));
+      console.log("=== DECODED SNIPPET END ===");
     }
 
-    // Fallback to HLS
-    const hlsMatch = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
 
-    if (hlsMatch && hlsMatch[1]) {
-      console.log("Extracted HLS:", hlsMatch[1]);
-      return hlsMatch[1];
+    if (!match || !match[1]) {
+      console.log("Could not extract ondemandHls after HTML decode");
+      return null;
     }
 
-    console.log("Could not extract stream");
-    return null;
+    console.log("Extracted HLS:", match[1]);
+
+    return match[1];
 
   } catch (err) {
     console.log("OK resolver error:", err.message);
@@ -301,19 +277,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
     // OK.ru resolver
     if (cand.includes("ok.ru")) {
-      let direct = await resolveOkRuToDirect(cand, axios, UA);
-      console.log("Direct stream (original):", direct);
+      const direct = await resolveOkRuToDirect(cand, axios, UA);
+      console.log("Direct stream:", direct);
 
       if (!direct) return { streams: [] };
-
-      // Rewrite vkuser host to vd404 for Apple compatibility
-      if (direct.includes("vkuser.net")) {
-        direct = direct.replace(
-          /^https:\/\/[^\/]+/,
-          "https://vd404.okcdn.ru"
-        );
-        console.log("Rewritten host for Apple:", direct);
-      }
 
       return {
         streams: [
@@ -321,6 +288,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
             title: "KhmerDub",
             url: direct,
             behaviorHints: {
+              notWebReady: true,
               proxyHeaders: {
                 request: {
                   Referer: "https://ok.ru/",
