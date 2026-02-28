@@ -210,8 +210,6 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       html = String(html);
     }
 
-    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
-
     // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
@@ -219,24 +217,24 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    // Print snippet AFTER decoding
-    const pos = html.indexOf("ondemandHls");
-    if (pos !== -1) {
-      console.log("=== DECODED SNIPPET START ===");
-      console.log(html.slice(pos - 200, pos + 500));
-      console.log("=== DECODED SNIPPET END ===");
+    // Try MP4 first (Apple friendly)
+    const mp4Match = html.match(/"url"\s*:\s*"(https:[^"]+type=3[^"]*)/);
+
+    if (mp4Match && mp4Match[1]) {
+      console.log("Extracted MP4:", mp4Match[1]);
+      return mp4Match[1];
     }
 
-    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    // Fallback to HLS
+    const hlsMatch = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
 
-    if (!match || !match[1]) {
-      console.log("Could not extract ondemandHls after HTML decode");
-      return null;
+    if (hlsMatch && hlsMatch[1]) {
+      console.log("Extracted HLS:", hlsMatch[1]);
+      return hlsMatch[1];
     }
 
-    console.log("Extracted HLS:", match[1]);
-
-    return match[1];
+    console.log("Could not extract stream");
+    return null;
 
   } catch (err) {
     console.log("OK resolver error:", err.message);
