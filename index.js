@@ -217,16 +217,20 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    // Try MP4 first (Apple friendly)
-    const mp4Match = html.match(/"url"\s*:\s*"(https:[^"]+type=3[^"]*)/);
+    // 1️⃣ Try real MP4 first
+    const mp4Match = html.match(
+      /"(https:\/\/vd[0-9\-\.]+okcdn\.ru\/\?[^"]+type=3[^"]*)"/
+    );
 
     if (mp4Match && mp4Match[1]) {
-      console.log("Extracted MP4:", mp4Match[1]);
+      console.log("Extracted REAL MP4:", mp4Match[1]);
       return mp4Match[1];
     }
 
-    // Fallback to HLS
-    const hlsMatch = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    // 2️⃣ Fallback to HLS
+    const hlsMatch = html.match(
+      /"ondemandHls"\s*:\s*"([^"]+)/
+    );
 
     if (hlsMatch && hlsMatch[1]) {
       console.log("Extracted HLS:", hlsMatch[1]);
