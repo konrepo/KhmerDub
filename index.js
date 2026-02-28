@@ -113,7 +113,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
             .each((i, el) => {
                 const link = $(el).attr("href");
-                if (link) {
+                if (link && link.includes("/videos/")) {
                     episodes.push(link);
                 }
             });
