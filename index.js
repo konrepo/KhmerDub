@@ -215,22 +215,45 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       html = String(html);
     }
 
-    // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    // Extract metadata JSON safely
+    const metaMatch = html.match(/"metadata"\s*:\s*"({.*?})"/);
 
-    if (!match || !match[1]) {
-      return null;
+    if (metaMatch && metaMatch[1]) {
+      try {
+        const metadata = JSON.parse(metaMatch[1]);
+
+        // Try HLS
+        if (metadata.ondemandHls) {
+          return metadata.ondemandHls;
+        }
+
+        // Try MP4
+        if (metadata.videos && metadata.videos.length) {
+          const mp4 = metadata.videos.find(v => v.url && v.url.includes("type=3"));
+          if (mp4) return mp4.url;
+        }
+
+      } catch (e) {
+        // ignore JSON parse errors
+      }
     }
 
-    return match[1];
+    // Fallback generic match
+    const hlsMatch = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    if (hlsMatch && hlsMatch[1]) return hlsMatch[1];
 
-  } catch (err) {
+    const mp4Match = html.match(/"(https:[^"]+?\.mp4[^"]*)"/);
+    if (mp4Match && mp4Match[1]) return mp4Match[1];
+
+    return null;
+
+  } catch {
     return null;
   }
 }
