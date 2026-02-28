@@ -1,8 +1,8 @@
 const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
-    id: "org.konrepo.khmerdub",
-    version: "1.0.0",
+    id: "org.konrepo.khmerdub.v2",
+    version: "2.0.0",
     name: "KhmerDub",
     description: "Khmer Dubbed Series",
     resources: ["catalog", "meta", "stream"],
