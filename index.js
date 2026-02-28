@@ -107,7 +107,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
             if (match) poster = match[1];
         }
 
-        // Episode
+        // Collect episode links
         let episodes = [];
 
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
@@ -118,18 +118,38 @@ builder.defineMetaHandler(async ({ type, id }) => {
                 }
             });
 
-        if (episodes.length) {
-            episodes = [...new Set(episodes)];
-            episodes = episodes.reverse();
-        }
+        // Remove duplicates
+        episodes = [...new Set(episodes)];
 
-        const videos = episodes.map((link, index) => ({
-            id: Buffer.from(link).toString("base64"),
-            season: 1,
-            episode: index + 1,
-            title: `Episode ${String(index + 1).padStart(2, "0")}`,
-            thumbnail: poster
-        }));
+        // Episode 1 = album page, but give it a unique synthetic ID
+        const ep1Url = realUrl + (realUrl.includes("?") ? "&" : "?") + "ep=1";
+
+        // Keep only real /videos/ pages for Episode 2+
+        const epRest = episodes.filter(link => link.includes("/videos/"));
+
+        // Sort Episode 2+ by episode number if present
+        epRest.sort((a, b) => {
+            const numA = parseInt(a.match(/-(\d+)\//)?.[1] || "0", 10);
+            const numB = parseInt(b.match(/-(\d+)\//)?.[1] || "0", 10);
+            return numA - numB;
+        });
+
+        const videos = [
+            {
+                id: Buffer.from(ep1Url).toString("base64"),
+                season: 1,
+                episode: 1,
+                title: "Episode 01",
+                thumbnail: poster
+            },
+            ...epRest.map((link, index) => ({
+                id: Buffer.from(link).toString("base64"),
+                season: 1,
+                episode: index + 2,
+                title: `Episode ${String(index + 2).padStart(2, "0")}`,
+                thumbnail: poster
+            }))
+        ];
 
         return {
             meta: {
