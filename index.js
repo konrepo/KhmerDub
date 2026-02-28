@@ -123,13 +123,18 @@ builder.defineMetaHandler(async ({ type, id }) => {
             episodes = episodes.reverse();
         }
 
-        const videos = episodes.map((link, index) => ({
-            id: Buffer.from(link).toString("base64"),
-            season: 1,
-            episode: index + 1,
-            title: `Episode ${String(index + 1).padStart(2, "0")}`,
-            thumbnail: poster
-        }));
+        const videos = episodes.map((link, index) => {
+			const isAlbum = link.includes("/album/");
+			const episodeUrl = isAlbum ? link + "#ep1" : link;
+			
+			return {				
+				id: Buffer.from(episodeUrl).toString("base64"),
+				season: 1,
+				episode: index + 1,
+				title: `Episode ${String(index + 1).padStart(2, "0")}`,
+				thumbnail: poster
+			};
+		});
 
         return {
             meta: {
@@ -245,13 +250,65 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 }
 
 
+// helper functions for ep1
+
+async function handleEpisodeOne(url, UA) {
+  try {
+    const epRes = await axios.get(url, {
+      headers: {
+        "User-Agent": UA,
+        "Referer": "https://www.khmeravenue.com/"
+      },
+      timeout: 15000
+    });
+
+    const html = epRes.data;
+    const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+
+    if (!candidate) return { streams: [] };
+
+    const cand = normalizeOkUrl(candidate);
+    const direct = await resolveOkRuToDirect(cand, axios, UA);
+
+    if (!direct) return { streams: [] };
+
+    return {
+      streams: [
+        {
+          title: "KhmerDub",
+          url: direct,
+          behaviorHints: {
+            proxyHeaders: {
+              request: {
+                Referer: "https://ok.ru/",
+                "User-Agent": UA
+              }
+            }
+          }
+        }
+      ]
+    };
+
+  } catch {
+    return { streams: [] };
+  }
+}
+
+
 builder.defineStreamHandler(async ({ type, id }) => {
   if (type !== "series") return { streams: [] };
   
-  const realUrl = Buffer.from(id, "base64").toString("utf8");
-
+  const realUrl = Buffer.from(id, "base64")
+    .toString("utf8")
+    .replace("#ep1", "");
+  
   const UA =
     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
+
+  // Detect EP1 (album page)
+  if (realUrl.includes("/album/")) {
+    return await handleEpisodeOne(realUrl, UA);
+  }
 
   console.log("STREAM REQUEST:", id);
 
