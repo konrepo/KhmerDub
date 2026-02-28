@@ -30,7 +30,6 @@ builder.defineCatalogHandler(async (args) => {
     console.log("FULL ARGS:", args);
 
     const { id, extra } = args;
-
     if (id !== "khmerave") return { metas: [] };
 
     try {
@@ -38,57 +37,61 @@ builder.defineCatalogHandler(async (args) => {
         console.log("Extra received:", extra);
 
         const skip = parseInt(extra?.skip || "0");
-		const limit = parseInt(extra?.limit || "18");
         console.log("Skip value:", skip);
 
         const WEBSITE_PAGE_SIZE = 18;
+        const PAGES_PER_BATCH = 3; // 3 website pages = ~54 items
 
-        const page = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
-        console.log("Calculated page:", page);
+        const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
 
-        const url = page === 1
-            ? "https://www.khmeravenue.com/album/"
-            : `https://www.khmeravenue.com/album/page/${page}/`;
+        let metas = [];
 
-        console.log("Fetching URL:", url);
+        for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
 
-        const { data } = await axios.get(url, {
-            headers: {
-                "User-Agent":
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-            },
-            timeout: 15000
-        });
+            const url = p === 1
+                ? "https://www.khmeravenue.com/album/"
+                : `https://www.khmeravenue.com/album/page/${p}/`;
 
-        const $ = cheerio.load(data);
-        const metas = [];
+            console.log("Fetching URL:", url);
 
-        $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
-            const link = $(el).find("a").attr("href");
+            const { data } = await axios.get(url, {
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+                },
+                timeout: 15000
+            });
 
-            let title = $(el).find("h3").text().trim();
-            title = title
-                .replace(/&#8217;/g, "'")
-                .replace(/&amp;/g, "&")
-                .replace(/\s+/g, " ")
-                .trim();
+            const $ = cheerio.load(data);
 
-            const style = $(el).find("div[style]").attr("style") || "";
-            const match = style.match(/url\((.*?)\)/);
-            const poster = match ? match[1] : "";
+            $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
+                const link = $(el).find("a").attr("href");
 
-            if (link && title) {
-                metas.push({
-                    id: Buffer.from(link).toString("base64"),
-                    type: "series",
-                    name: title,
-                    poster,
-                    posterShape: "regular"
-                });
-            }
-        });
+                let title = $(el).find("h3").text().trim();
+                title = title
+                    .replace(/&#8217;/g, "'")
+                    .replace(/&amp;/g, "&")
+                    .replace(/\s+/g, " ")
+                    .trim();
 
-        console.log("Metas returned:", metas.length);
+                const style = $(el).find("div[style]").attr("style") || "";
+                const match = style.match(/url\((.*?)\)/);
+                const poster = match ? match[1] : "";
+
+                if (link && title) {
+                    metas.push({
+                        id: Buffer.from(link).toString("base64"),
+                        type: "series",
+                        name: title,
+                        poster,
+                        posterShape: "regular"
+                    });
+                }
+            });
+
+        }
+
+        console.log("Total metas returned:", metas.length);
         console.log("-------------------------");
 
         return { metas };
