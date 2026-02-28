@@ -330,11 +330,26 @@ builder.defineStreamHandler(async ({ type, id }) => {
         realUrl.match(/-(\d+)\//)?.[1] || "1",
         10
       );
+	  
+	  const showName = realUrl
+        .split("/")
+        .filter(Boolean)
+        .slice(-1)[0]
+        .replace(/-\d+$/, "") // remove episode number
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, c => c.toUpperCase());
+	  
+	  const epNumber = parseInt(
+        realUrl.match(/-(\d+)\//)?.[1] || "1",
+        10
+	  );
+
+	  const formattedTitle = `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
 
       return {
         streams: [
           {
-            title: "KhmerDub",
+            title: formattedTitle,
             url: direct,
 			season: 1,
 			episode: epNumber,
