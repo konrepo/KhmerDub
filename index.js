@@ -29,13 +29,21 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     if (id !== "khmerave") return { metas: [] };
 
     try {
+		console.log("---- CATALOG REQUEST ----");
+		console.log("Extra received:", extra);
+		
         const skip = parseInt(extra?.skip || "0");
+		console.log("Skip value:", skip);
+		
 		const WEBSITE_PAGE_SIZE = 18;
+		
         const page = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
+		console.log("Calculated page:", page);
 
         const url = page === 1
             ? "https://www.khmeravenue.com/album/"
             : `https://www.khmeravenue.com/album/page/${page}/`;
+		console.log("Fetching URL:", url);	
 
         const { data } = await axios.get(url, {
             headers: {
@@ -72,6 +80,9 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
                 });
             }
         });
+		
+		console.log("Metas returned:", metas.length);
+        console.log("-------------------------");
 
         return { metas };
 
