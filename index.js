@@ -113,7 +113,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
             .each((i, el) => {
                 const link = $(el).attr("href");
-                if (link && link.includes("/videos/")) {
+                if (link) {
                     episodes.push(link);
                 }
             });
@@ -288,7 +288,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
             title: "KhmerDub",
             url: direct,
             behaviorHints: {
-              notWebReady: true,
               proxyHeaders: {
                 request: {
                   Referer: "https://ok.ru/",
