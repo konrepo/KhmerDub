@@ -257,13 +257,23 @@ async function handleEpisodeOne(url, UA) {
 
     if (!direct) return { streams: [] };
 
+    // Extract show name from URL
+    const showName = url
+      .split("/")
+      .filter(Boolean)
+      .slice(-1)[0]
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, c => c.toUpperCase());
+
+    const formattedTitle = `${showName}  S01:E01`;
+
     return {
       streams: [
         {
-          title: "KhmerDub",
+          title: formattedTitle,
           url: direct,
-		  season: 1,
-		  episode: 1,			
+          season: 1,
+          episode: 1,
           behaviorHints: {
             proxyHeaders: {
               request: {
@@ -325,7 +335,8 @@ builder.defineStreamHandler(async ({ type, id }) => {
       console.log("Direct stream:", direct);
 
       if (!direct) return { streams: [] };
-	   
+	  
+	  // Extract show name from URL	  
 	  const showName = realUrl
         .split("/")
         .filter(Boolean)
