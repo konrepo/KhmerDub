@@ -248,7 +248,27 @@ async function handleEpisodeOne(url, UA) {
     });
 
     const html = epRes.data;
-    const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+
+    let candidate = null;
+
+    // Try extracting from options.player_list (most reliable for album pages)
+    const playerMatch = html.match(/options\.player_list\s*=\s*(\[[\s\S]*?\]);/);
+
+    if (playerMatch) {
+      try {
+        const playerList = JSON.parse(playerMatch[1]);
+        if (playerList.length && playerList[0].file) {
+          candidate = playerList[0].file;
+        }
+      } catch (e) {
+        // JSON parse failed, ignore
+      }
+    }
+
+    // Fallback to generic extractor
+    if (!candidate) {
+      candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+    }
 
     if (!candidate) return { streams: [] };
 
