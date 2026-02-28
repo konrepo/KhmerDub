@@ -13,7 +13,8 @@ const manifest = {
             id: "khmerave",
             name: "KhmerAve",
             extra: [
-                { name: "skip", isRequired: false }
+                { name: "skip", isRequired: false },
+				{ name: "limit", isRequired: false }
 			]				
         }
     ]
@@ -37,6 +38,7 @@ builder.defineCatalogHandler(async (args) => {
         console.log("Extra received:", extra);
 
         const skip = parseInt(extra?.skip || "0");
+		const limit = parseInt(extra?.limit || "18");
         console.log("Skip value:", skip);
 
         const WEBSITE_PAGE_SIZE = 18;
