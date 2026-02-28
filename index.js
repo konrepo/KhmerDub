@@ -215,45 +215,36 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       html = String(html);
     }
 
+    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
+	
+    // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
+	  
+    // Print snippet AFTER decoding
+    const pos = html.indexOf("ondemandHls");
+    if (pos !== -1) {
+      console.log("=== DECODED SNIPPET START ===");
+      console.log(html.slice(pos - 200, pos + 500));
+      console.log("=== DECODED SNIPPET END ===");
+    }	  
 
-    // Extract metadata JSON safely
-    const metaMatch = html.match(/"metadata"\s*:\s*"({.*?})"/);
+    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
 
-    if (metaMatch && metaMatch[1]) {
-      try {
-        const metadata = JSON.parse(metaMatch[1]);
-
-        // Try HLS
-        if (metadata.ondemandHls) {
-          return metadata.ondemandHls;
-        }
-
-        // Try MP4
-        if (metadata.videos && metadata.videos.length) {
-          const mp4 = metadata.videos.find(v => v.url && v.url.includes("type=3"));
-          if (mp4) return mp4.url;
-        }
-
-      } catch (e) {
-        // ignore JSON parse errors
-      }
+    if (!match || !match[1]) {
+      console.log("Could not extract ondemandHls after HTML decode");	
+      return null;
     }
 
-    // Fallback generic match
-    const hlsMatch = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
-    if (hlsMatch && hlsMatch[1]) return hlsMatch[1];
+    console.log("Extracted HLS:", match[1]);
 
-    const mp4Match = html.match(/"(https:[^"]+?\.mp4[^"]*)"/);
-    if (mp4Match && mp4Match[1]) return mp4Match[1];
+    return match[1];
 
-    return null;
-
-  } catch {
+  } catch (err) {
+    console.log("OK resolver error:", err.message);  
     return null;
   }
 }
@@ -271,27 +262,7 @@ async function handleEpisodeOne(url, UA) {
     });
 
     const html = epRes.data;
-
-    let candidate = null;
-
-    // Try extracting from options.player_list (most reliable for album pages)
-    const playerMatch = html.match(/options\.player_list\s*=\s*(\[[\s\S]*?\]);/);
-
-    if (playerMatch) {
-      try {
-        const playerList = JSON.parse(playerMatch[1]);
-        if (playerList.length && playerList[0].file) {
-          candidate = playerList[0].file;
-        }
-      } catch (e) {
-        // JSON parse failed, ignore
-      }
-    }
-
-    // Fallback to generic extractor
-    if (!candidate) {
-      candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
-    }
+    const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
 
     if (!candidate) return { streams: [] };
 
