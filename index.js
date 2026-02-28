@@ -281,10 +281,19 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
     // OK.ru resolver
     if (cand.includes("ok.ru")) {
-      const direct = await resolveOkRuToDirect(cand, axios, UA);
-      console.log("Direct stream:", direct);
+      let direct = await resolveOkRuToDirect(cand, axios, UA);
+      console.log("Direct stream (original):", direct);
 
       if (!direct) return { streams: [] };
+
+      // Rewrite vkuser host to vd404 for Apple compatibility
+      if (direct.includes("vkuser.net")) {
+        direct = direct.replace(
+          /^https:\/\/[^\/]+/,
+          "https://vd404.okcdn.ru"
+        );
+        console.log("Rewritten host for Apple:", direct);
+      }
 
       return {
         streams: [
