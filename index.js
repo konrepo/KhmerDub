@@ -325,12 +325,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       console.log("Direct stream:", direct);
 
       if (!direct) return { streams: [] };
-	  
-      const epNumber = parseInt(
-        realUrl.match(/-(\d+)\//)?.[1] || "1",
-        10
-      );
-	  
+	   
 	  const showName = realUrl
         .split("/")
         .filter(Boolean)
