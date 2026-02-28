@@ -11,7 +11,7 @@ const manifest = {
         {
             type: "series",
             id: "khmerave",
-            name: "KhmerAve"
+            name: "KhmerAve",
             extra: [
                 { name: "skip", isRequired: false }
 			]				
