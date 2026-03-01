@@ -17,7 +17,8 @@ const manifest = {
 			genres: ["KhmerAve"],
             extra: [
                 { name: "skip", isRequired: false },
-				{ name: "limit", isRequired: false }
+				{ name: "limit", isRequired: false },
+				{ name: "search", isRequired: false }
 			]				
         },
         {
@@ -27,7 +28,8 @@ const manifest = {
 			genres: ["Merlkon"],
             extra: [
                 { name: "skip", isRequired: false },
-				{ name: "limit", isRequired: false }
+				{ name: "limit", isRequired: false },
+				{ name: "search", isRequired: false }
 			]				
         }		
     ]
@@ -45,6 +47,68 @@ builder.defineCatalogHandler(async (args) => {
     if (id !== "khmerave" && id !== "merlkon") return { metas: [] };
 
     try {
+		
+		// Search
+        if (extra?.search) {
+
+            const keyword = encodeURIComponent(extra.search);
+            let url;
+
+            if (id === "khmerave") {
+                url = `https://www.khmeravenue.com/?s=${keyword}`;
+            }
+
+            if (id === "merlkon") {
+                url = `https://www.khmerdrama.com/?s=${keyword}`;
+            }
+
+            const { data } = await axios.get(url, {
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+                    "Referer": id === "merlkon"
+                        ? "https://www.khmerdrama.com/"
+                        : "https://www.khmeravenue.com/"
+                },
+                timeout: 15000
+            });
+
+            const $ = cheerio.load(data);
+            let metas = [];
+
+            $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
+                const link = $(el).find("a").attr("href");
+
+                let title = $(el).find("h3").text().trim();
+                title = title
+                    .replace(/&#8217;/g, "'")
+                    .replace(/&amp;/g, "&")
+                    .replace(/\s+/g, " ")
+                    .trim();
+
+                const style =
+                    $(el).find("div[style]").attr("style") ||
+                    $(el).find(".card-content-image").attr("style") || "";
+
+                const match = style.match(/url\((.*?)\)/);
+                const poster = match
+                    ? match[1].replace(/['"]/g, "")
+                    : "";
+
+                if (link && title) {
+                    metas.push({
+                        id: Buffer.from(link).toString("base64"),
+                        type: "series",
+                        name: title,
+                        poster,
+                        posterShape: "regular"
+                    });
+                }
+            });
+
+            return { metas };
+        }
+        // End search
 
         const skip = parseInt(extra?.skip || "0");
 
