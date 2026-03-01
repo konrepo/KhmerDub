@@ -334,15 +334,25 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");	  
+      .replace(/\\\//g, "/");
 
-    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    // TEMP DEBUG
+    console.log("OK HTML snippet:", html.slice(0, 2000));	  
 
-    if (!match || !match[1]) {	
-      return null;
+    const patterns = [
+      /"ondemandHls"\s*:\s*"([^"]+)/,
+      /"hlsManifestUrl"\s*:\s*"([^"]+)/,
+      /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/
+    ];
+
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m?.[1]) {
+		return m[1];
+      }
     }
-    
-    return match[1];
+
+    return null;
 
   } catch (err) {
     console.error("OK resolver error:", err.message);  
