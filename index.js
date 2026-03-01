@@ -12,6 +12,7 @@ const manifest = {
             type: "series",
             id: "khmerave",
             name: "KhmerAve",
+			genres: ["KhmerAve"],
             extra: [
                 { name: "skip", isRequired: false },
 				{ name: "limit", isRequired: false }
@@ -21,6 +22,7 @@ const manifest = {
             type: "series",
             id: "merlkon",
             name: "Merlkon",
+			genres: ["Merlkon"],
             extra: [
                 { name: "skip", isRequired: false },
 				{ name: "limit", isRequired: false }
