@@ -553,42 +553,55 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
-const express = require("express");
+const { serveHTTP } = require("stremio-addon-sdk");
+const http = require("http");
+const url = require("url");
 
-const app = express();
+// Create addon HTTP handler
 const addonInterface = builder.getInterface();
 
-// Proxy endpoint FIRST
-app.get("/proxy", async (req, res) => {
-  const targetUrl = req.query.url;
-  if (!targetUrl) return res.status(400).send("Missing url");
+// Create HTTP server manually
+const server = http.createServer(async (req, res) => {
+  const parsed = url.parse(req.url, true);
 
-  try {
-    const response = await axios.get(targetUrl, {
-      responseType: "stream",
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36",
-        "Referer": "https://ok.ru/"
-      }
-    });
+  // Proxy endpoint
+  if (parsed.pathname === "/proxy") {
+    const targetUrl = parsed.query.url;
+    if (!targetUrl) {
+      res.writeHead(400);
+      return res.end("Missing url");
+    }
 
-    res.setHeader(
-      "Content-Type",
-      response.headers["content-type"] || "application/vnd.apple.mpegurl"
-    );
+    try {
+      const response = await axios.get(targetUrl, {
+        responseType: "stream",
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36",
+          "Referer": "https://ok.ru/"
+        }
+      });
 
-    response.data.pipe(res);
-  } catch (err) {
-    console.error("Proxy error:", err.message);
-    res.status(500).send("Proxy failed");
+      res.writeHead(200, {
+        "Content-Type":
+          response.headers["content-type"] || "application/vnd.apple.mpegurl"
+      });
+
+      response.data.pipe(res);
+    } catch (err) {
+      console.error("Proxy error:", err.message);
+      res.writeHead(500);
+      res.end("Proxy failed");
+    }
+
+    return;
   }
+
+  // Let Stremio SDK handle everything else
+  addonInterface(req, res);
 });
 
-// Then mount addon interface
-app.use("/", addonInterface);
-
 const port = process.env.PORT || 7000;
-app.listen(port, () => {
+server.listen(port, () => {
   console.log("Addon running on port", port);
 });
