@@ -1,4 +1,4 @@
-const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+const { addonBuilder } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "community.khmerdub.world",
@@ -444,16 +444,11 @@ async function handleEpisodeOne(url, UA) {
       streams: [
         {
           title: formattedTitle,
-          url: direct,
+          url: `https://khmerdub.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
           season: 1,
           episode: 1,
           behaviorHints: {
-            proxyHeaders: {
-              request: {
-                Referer: "https://ok.ru/",
-                "User-Agent": UA
-              }
-            }
+            notWebReady: true
           }
         }
       ]
@@ -527,17 +522,11 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: formattedTitle,
-            url: direct,
+            url: `https://khmerdub.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
 			season: 1,
 			episode: epNumber,
             behaviorHints: {
-              notWebReady: true,
-              proxyHeaders: {
-                request: {
-                  Referer: "https://ok.ru/",
-                  "User-Agent": UA
-                }
-              }
+              notWebReady: true
             }
           }
         ]
@@ -564,5 +553,37 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
+const express = require("express");
+
+const app = express();
+
+// Attach Stremio interface
+app.use("/", builder.getInterface());
+
+// Proxy endpoint
+app.get("/proxy", async (req, res) => {
+  const targetUrl = req.query.url;
+  if (!targetUrl) return res.status(400).send("Missing url");
+
+  try {
+    const response = await axios.get(targetUrl, {
+      responseType: "stream",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36",
+        "Referer": "https://ok.ru/"
+      }
+    });
+
+    res.setHeader("Content-Type", response.headers["content-type"] || "application/vnd.apple.mpegurl");
+    response.data.pipe(res);
+  } catch (err) {
+    console.error("Proxy error:", err.message);
+    res.status(500).send("Proxy failed");
+  }
+});
+
 const port = process.env.PORT || 7000;
-serveHTTP(builder.getInterface(), { port });
+app.listen(port, () => {
+  console.log("Addon running on port", port);
+});
