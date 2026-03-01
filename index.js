@@ -2,8 +2,8 @@ const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "community.khmerdub.world",
-    version: "3.0.0",
-    name: "KhmerDub World",
+    version: "3.0.1",
+    name: "KhmerDub",
     description: "Stream Asian dramas dubbed in Khmer.",
     logo: "https://avatars.githubusercontent.com/u/32822347?v=4",
 	developer: "TheDevilz",
