@@ -556,11 +556,14 @@ builder.defineStreamHandler(async ({ type, id }) => {
 const express = require("express");
 
 const app = express();
+const addonInterface = builder.getInterface();
 
-// Attach Stremio interface
-app.use("/", builder.getInterface());
+// Manifest
+app.get("/manifest.json", (req, res) => {
+  res.json(addonInterface.manifest);
+});
 
-// Proxy endpoint
+// Proxy endpoint (must come before dynamic route)
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).send("Missing url");
@@ -575,12 +578,27 @@ app.get("/proxy", async (req, res) => {
       }
     });
 
-    res.setHeader("Content-Type", response.headers["content-type"] || "application/vnd.apple.mpegurl");
+    res.setHeader(
+      "Content-Type",
+      response.headers["content-type"] || "application/vnd.apple.mpegurl"
+    );
+
     response.data.pipe(res);
   } catch (err) {
     console.error("Proxy error:", err.message);
     res.status(500).send("Proxy failed");
   }
+});
+
+// Dynamic addon route (must be last)
+app.get("/:resource/:type/:id.json", (req, res) => {
+  addonInterface
+    .get(req)
+    .then(resp => res.json(resp))
+    .catch(err => {
+      console.error("Addon error:", err);
+      res.status(500).send("Addon error");
+    });
 });
 
 const port = process.env.PORT || 7000;
