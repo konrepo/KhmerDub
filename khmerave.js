@@ -389,8 +389,8 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 
         // Skip non-playable videoPlayerCdn URLs
         if (url.includes("videoPlayerCdn")) {
-          console.log("Skipping videoPlayerCdn URL (not playable)");
-          continue;
+          console.log("Using videoPlayerCdn URL");
+          return url.replace(/\\&/g, "&");
         }
 
         console.log(`OK Resolver: HLS found via inline key (${p.name})`);
