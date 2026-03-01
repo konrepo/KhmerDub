@@ -444,7 +444,7 @@ async function handleEpisodeOne(url, UA) {
       streams: [
         {
           title: formattedTitle,
-          url: `https://khmerdub.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+          url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
           season: 1,
           episode: 1,
           behaviorHints: {
@@ -522,7 +522,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: formattedTitle,
-            url: `https://khmerdub.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
 			season: 1,
 			episode: epNumber,
             behaviorHints: {
@@ -554,56 +554,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
 });
 
 const { serveHTTP } = require("stremio-addon-sdk");
-const http = require("http");
-const url = require("url");
-
-const addonInterface = builder.getInterface();
-
-// Create base server using serveHTTP
-const addonServer = serveHTTP(addonInterface);
-
-// Create HTTP server wrapper
-const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
-
-  // Proxy endpoint
-  if (parsed.pathname === "/proxy") {
-    const targetUrl = parsed.query.url;
-    if (!targetUrl) {
-      res.writeHead(400);
-      return res.end("Missing url");
-    }
-
-    try {
-      const response = await axios.get(targetUrl, {
-        responseType: "stream",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36",
-          "Referer": "https://ok.ru/"
-        }
-      });
-
-      res.writeHead(200, {
-        "Content-Type":
-          response.headers["content-type"] || "application/vnd.apple.mpegurl"
-      });
-
-      response.data.pipe(res);
-    } catch (err) {
-      console.error("Proxy error:", err.message);
-      res.writeHead(500);
-      res.end("Proxy failed");
-    }
-
-    return;
-  }
-
-  // All other routes go to Stremio addon
-  addonServer(req, res);
-});
-
 const port = process.env.PORT || 7000;
-server.listen(port, () => {
-  console.log("Addon running on port", port);
-});
+serveHTTP(builder.getInterface(), { port });
+console.log("Addon running on port", port);
