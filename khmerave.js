@@ -355,14 +355,16 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
         if (optionsJson?.flashvars?.metadata) {
           const metadata = JSON.parse(optionsJson.flashvars.metadata);
 
-          if (metadata?.hlsManifestUrl) {
-            console.log("🎥 OK Resolver: HLS found via data-options (hlsManifestUrl)");
-            return metadata.hlsManifestUrl;
-          }
-
           if (metadata?.ondemandHls) {
             console.log("🎥 OK Resolver: HLS found via data-options (ondemandHls)");
+            console.log("🎬 FINAL HLS URL:", metadata.ondemandHls);
             return metadata.ondemandHls;
+          }
+
+          if (metadata?.hlsManifestUrl) {
+            console.log("🎥 OK Resolver: HLS found via data-options (hlsManifestUrl)");
+            console.log("🎬 FINAL HLS URL:", metadata.hlsManifestUrl);
+            return metadata.hlsManifestUrl;
           }
         }
       } catch (err) {
@@ -374,8 +376,8 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 
     // Fallback: inline HLS keys
     const inlinePatterns = [
+      { name: "ondemandHls", re: /"ondemandHls"\s*:\s*"([^"]+)/ },	
       { name: "hlsManifestUrl", re: /"hlsManifestUrl"\s*:\s*"([^"]+)/ },
-      { name: "ondemandHls", re: /"ondemandHls"\s*:\s*"([^"]+)/ },
       { name: "hlsMasterPlaylistUrl", re: /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/ }
     ];
 
@@ -383,6 +385,7 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       const m = html.match(p.re);
       if (m?.[1]) {
         console.log(`OK Resolver: HLS found via inline key (${p.name})`);
+        console.log("FINAL HLS URL:", m[1]);
         return m[1];
       }
     }
