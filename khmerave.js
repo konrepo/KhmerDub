@@ -557,10 +557,12 @@ const { serveHTTP } = require("stremio-addon-sdk");
 const http = require("http");
 const url = require("url");
 
-// Create addon HTTP handler
 const addonInterface = builder.getInterface();
 
-// Create HTTP server manually
+// Create base server using serveHTTP
+const addonServer = serveHTTP(addonInterface);
+
+// Create HTTP server wrapper
 const server = http.createServer(async (req, res) => {
   const parsed = url.parse(req.url, true);
 
@@ -597,8 +599,8 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Let Stremio SDK handle everything else
-  addonInterface(req, res);
+  // All other routes go to Stremio addon
+  addonServer(req, res);
 });
 
 const port = process.env.PORT || 7000;
