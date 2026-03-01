@@ -590,10 +590,17 @@ app.get("/proxy", async (req, res) => {
   }
 });
 
-// Dynamic addon route (must be last)
+// Dynamic addon route
 app.get("/:resource/:type/:id.json", (req, res) => {
+  const { resource, type, id } = req.params;
+
   addonInterface
-    .get(req)
+    .get({
+      resource,
+      type,
+      id,
+      extra: req.query
+    })
     .then(resp => res.json(resp))
     .catch(err => {
       console.error("Addon error:", err);
