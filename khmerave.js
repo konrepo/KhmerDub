@@ -326,7 +326,9 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       headers: {
         "User-Agent": ua,
         "Referer": okUrl,
-        "Origin": "https://ok.ru"
+        "Origin": "https://ok.ru",
+        "Accept": "application/json, text/javascript, */*; q=0.01",
+        "X-Requested-With": "XMLHttpRequest"
       },
       timeout: 15000
     });
