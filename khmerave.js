@@ -389,8 +389,8 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 
         // Skip non-playable videoPlayerCdn URLs
         if (url.includes("videoPlayerCdn")) {
-          console.log("Using videoPlayerCdn URL");
-          return url.replace(/\\&/g, "&");
+          console.log("Skipping videoPlayerCdn URL (not playable)");
+		  continue;
         }
 
         console.log(`OK Resolver: HLS found via inline key (${p.name})`);
@@ -447,9 +447,6 @@ async function handleEpisodeOne(url, UA) {
           url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
           season: 1,
           episode: 1,
-          behaviorHints: {
-            notWebReady: true
-          }
         }
       ]
     };
@@ -525,9 +522,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
             url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
 			season: 1,
 			episode: epNumber,
-            behaviorHints: {
-              notWebReady: true
-            }
           }
         ]
       };
