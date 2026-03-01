@@ -356,14 +356,14 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
           const metadata = JSON.parse(optionsJson.flashvars.metadata);
 
           if (metadata?.ondemandHls) {
-            console.log("🎥 OK Resolver: HLS found via data-options (ondemandHls)");
-            console.log("🎬 FINAL HLS URL:", metadata.ondemandHls);
+            console.log("OK Resolver: HLS found via data-options (ondemandHls)");
+            console.log("FINAL HLS URL:", metadata.ondemandHls);
             return metadata.ondemandHls;
           }
 
           if (metadata?.hlsManifestUrl) {
-            console.log("🎥 OK Resolver: HLS found via data-options (hlsManifestUrl)");
-            console.log("🎬 FINAL HLS URL:", metadata.hlsManifestUrl);
+            console.log("OK Resolver: HLS found via data-options (hlsManifestUrl)");
+            console.log("FINAL HLS URL:", metadata.hlsManifestUrl);
             return metadata.hlsManifestUrl;
           }
         }
@@ -384,9 +384,18 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     for (const p of inlinePatterns) {
       const m = html.match(p.re);
       if (m?.[1]) {
+
+        const url = m[1];
+
+        // Skip non-playable videoPlayerCdn URLs
+        if (url.includes("videoPlayerCdn")) {
+          console.log("Skipping videoPlayerCdn URL (not playable)");
+          continue;
+        }
+
         console.log(`OK Resolver: HLS found via inline key (${p.name})`);
-        console.log("FINAL HLS URL:", m[1]);
-        return m[1];
+        console.log("FINAL HLS URL:", url);
+        return url;
       }
     }
 
