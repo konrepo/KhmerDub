@@ -1,10 +1,12 @@
 const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
-    id: "org.konrepo.khmerdub.v2",
-    version: "2.0.0",
-    name: "KhmerDub",
-    description: "Khmer Dubbed Series",
+    id: "community.khmerdub.world",
+    version: "3.0.0",
+    name: "KhmerDub World",
+    description: "Stream Asian dramas dubbed in Khmer.",
+    logo: "https://avatars.githubusercontent.com/u/32822347?v=4",
+	developer: "TheDevilz",
     resources: ["catalog", "meta", "stream"],
     types: ["series"],
     catalogs: [
@@ -38,17 +40,13 @@ const cheerio = require("cheerio");
 
 
 builder.defineCatalogHandler(async (args) => {
-    console.log("FULL ARGS:", args);
 
     const { id, extra } = args;
     if (id !== "khmerave" && id !== "merlkon") return { metas: [] };
 
     try {
-        console.log("---- CATALOG REQUEST ----");
-        console.log("Extra received:", extra);
 
         const skip = parseInt(extra?.skip || "0");
-        console.log("Skip value:", skip);
 
         const WEBSITE_PAGE_SIZE = 18;
         const PAGES_PER_BATCH = 3; // 3 website pages = ~54 items
@@ -71,9 +69,7 @@ builder.defineCatalogHandler(async (args) => {
 				url = p === 1
                     ? "https://www.khmerdrama.com/album/"
                     : `https://www.khmerdrama.com/album/page/${p}/`;
-			}
-
-            console.log("Fetching URL:", url);
+			}           
 
             const { data } = await axios.get(url, {
                 headers: {
@@ -118,9 +114,6 @@ builder.defineCatalogHandler(async (args) => {
             });
 
         }
-
-        console.log("Total metas returned:", metas.length);
-        console.log("-------------------------");
 
         return { metas };
 
@@ -271,37 +264,24 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     if (typeof html !== "string") {
       html = String(html);
     }
-
-    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));
 	
     // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
-	  
-    // Print snippet AFTER decoding
-    const pos = html.indexOf("ondemandHls");
-    if (pos !== -1) {
-      console.log("=== DECODED SNIPPET START ===");
-      console.log(html.slice(pos - 200, pos + 500));
-      console.log("=== DECODED SNIPPET END ===");
-    }	  
+      .replace(/\\\//g, "/");	  
 
     const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
 
-    if (!match || !match[1]) {
-      console.log("Could not extract ondemandHls after HTML decode");	
+    if (!match || !match[1]) {	
       return null;
     }
-
-    console.log("Extracted HLS:", match[1]);
-
+    
     return match[1];
 
   } catch (err) {
-    console.log("OK resolver error:", err.message);  
+    console.error("OK resolver error:", err.message);  
     return null;
   }
 }
@@ -378,8 +358,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
     return await handleEpisodeOne(realUrl, UA);
   }
 
-  console.log("STREAM REQUEST:", id);
-
   try {
     // Fetch episode page
     const epRes = await axios.get(realUrl, {
@@ -396,7 +374,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
     // Extract candidate link
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
-    console.log("Candidate:", candidate);
 
     if (!candidate) return { streams: [] };
 
@@ -405,7 +382,6 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // OK.ru resolver
     if (cand.includes("ok.ru")) {
       const direct = await resolveOkRuToDirect(cand, axios, UA);
-      console.log("Direct stream:", direct);
 
       if (!direct) return { streams: [] };
 	  
