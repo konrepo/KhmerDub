@@ -558,12 +558,7 @@ const express = require("express");
 const app = express();
 const addonInterface = builder.getInterface();
 
-// Manifest
-app.get("/manifest.json", (req, res) => {
-  res.json(addonInterface.manifest);
-});
-
-// Proxy endpoint (must come before dynamic route)
+// Proxy endpoint FIRST
 app.get("/proxy", async (req, res) => {
   const targetUrl = req.query.url;
   if (!targetUrl) return res.status(400).send("Missing url");
@@ -590,23 +585,8 @@ app.get("/proxy", async (req, res) => {
   }
 });
 
-// Dynamic addon route
-app.get("/:resource/:type/:id.json", (req, res) => {
-  const { resource, type, id } = req.params;
-
-  addonInterface
-    .get({
-      resource,
-      type,
-      id,
-      extra: req.query
-    })
-    .then(resp => res.json(resp))
-    .catch(err => {
-      console.error("Addon error:", err);
-      res.status(500).send("Addon error");
-    });
-});
+// Then mount addon interface
+app.use("/", addonInterface);
 
 const port = process.env.PORT || 7000;
 app.listen(port, () => {
