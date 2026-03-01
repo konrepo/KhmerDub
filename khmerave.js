@@ -315,40 +315,83 @@ function normalizeOkUrl(url) {
 async function resolveOkRuToDirect(iframeUrl, axios, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
+    console.log("OK Resolver: Fetching embed:", okUrl);
 
-    // Extract video ID from /videoembed/
-    const videoId = okUrl.split("/videoembed/")[1]?.split("?")[0];
-    if (!videoId) return null;
-
-    const metaUrl = `https://ok.ru/dk?cmd=videoPlayerMetadata&mid=${videoId}`;
-
-    const metaRes = await axios.get(metaUrl, {
+    const okRes = await axios.get(okUrl, {
       headers: {
         "User-Agent": ua,
-        "Referer": okUrl,
-        "Origin": "https://ok.ru",
-        "Accept": "application/json, text/javascript, */*; q=0.01",
-        "X-Requested-With": "XMLHttpRequest"
+        "Referer": "https://ok.ru/"
       },
       timeout: 15000
     });
 
-    const metaData = metaRes.data;
-	
-	console.log("OK metadata response:", metaData);
-
-    if (metaData?.hlsManifestUrl) {
-      return metaData.hlsManifestUrl;
+    let html = okRes.data;
+    if (typeof html !== "string") {
+      html = String(html);
     }
 
-    if (metaData?.ondemandHls) {
-      return metaData.ondemandHls;
+    console.log("OK Resolver: Embed page loaded");
+
+    // Decode common escapes
+    html = html
+      .replace(/\\&quot;/g, '"')
+      .replace(/&quot;/g, '"')
+      .replace(/\\u0026/g, "&")
+      .replace(/\\\//g, "/");
+
+    // Try extracting from data-options JSON
+    const optionsMatch = html.match(/data-options="([^"]+)"/);
+
+    if (optionsMatch?.[1]) {
+      console.log("OK Resolver: Found data-options JSON");
+
+      try {
+        const decoded = optionsMatch[1]
+          .replace(/&quot;/g, '"')
+          .replace(/&amp;/g, '&');
+
+        const optionsJson = JSON.parse(decoded);
+
+        if (optionsJson?.flashvars?.metadata) {
+          const metadata = JSON.parse(optionsJson.flashvars.metadata);
+
+          if (metadata?.hlsManifestUrl) {
+            console.log("🎥 OK Resolver: HLS found via data-options (hlsManifestUrl)");
+            return metadata.hlsManifestUrl;
+          }
+
+          if (metadata?.ondemandHls) {
+            console.log("🎥 OK Resolver: HLS found via data-options (ondemandHls)");
+            return metadata.ondemandHls;
+          }
+        }
+      } catch (err) {
+        console.log("OK Resolver: data-options parse failed");
+      }
+    } else {
+      console.log("OK Resolver: No data-options found");
     }
 
+    // Fallback: inline HLS keys
+    const inlinePatterns = [
+      { name: "hlsManifestUrl", re: /"hlsManifestUrl"\s*:\s*"([^"]+)/ },
+      { name: "ondemandHls", re: /"ondemandHls"\s*:\s*"([^"]+)/ },
+      { name: "hlsMasterPlaylistUrl", re: /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/ }
+    ];
+
+    for (const p of inlinePatterns) {
+      const m = html.match(p.re);
+      if (m?.[1]) {
+        console.log(`OK Resolver: HLS found via inline key (${p.name})`);
+        return m[1];
+      }
+    }
+
+    console.log("OK Resolver: No HLS URL found");
     return null;
 
   } catch (err) {
-    console.error("OK resolver error:", err.message);
+    console.error("OK Resolver error:", err.message);
     return null;
   }
 }
