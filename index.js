@@ -16,7 +16,16 @@ const manifest = {
                 { name: "skip", isRequired: false },
 				{ name: "limit", isRequired: false }
 			]				
-        }
+        },
+        {
+            type: "series",
+            id: "merlkon",
+            name: "Merlkon",
+            extra: [
+                { name: "skip", isRequired: false },
+				{ name: "limit", isRequired: false }
+			]				
+        }		
     ]
 };
 
@@ -30,7 +39,7 @@ builder.defineCatalogHandler(async (args) => {
     console.log("FULL ARGS:", args);
 
     const { id, extra } = args;
-    if (id !== "khmerave") return { metas: [] };
+    if (id !== "khmerave" && id !== "merlkon") return { metas: [] };
 
     try {
         console.log("---- CATALOG REQUEST ----");
@@ -47,10 +56,20 @@ builder.defineCatalogHandler(async (args) => {
         let metas = [];
 
         for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
+			
+			let url;
+			
+			if (id === "khmerave") {
+				url = p === 1
+                    ? "https://www.khmeravenue.com/album/"
+                    : `https://www.khmeravenue.com/album/page/${p}/`;
+			}		
 
-            const url = p === 1
-                ? "https://www.khmeravenue.com/album/"
-                : `https://www.khmeravenue.com/album/page/${p}/`;
+			if (id === "merlkon") {
+				url = p === 1
+                    ? "https://www.khmerdrama.com/album/"
+                    : `https://www.khmerdrama.com/album/page/${p}/`;
+			}
 
             console.log("Fetching URL:", url);
 
@@ -58,6 +77,9 @@ builder.defineCatalogHandler(async (args) => {
                 headers: {
                     "User-Agent":
                         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
+					"Referer": id === "merlkon"
+                        ? "https://www.khmerdrama.com/"
+                        : "https://www.khmeravenue.com/"	
                 },
                 timeout: 15000
             });
@@ -73,10 +95,14 @@ builder.defineCatalogHandler(async (args) => {
                     .replace(/&amp;/g, "&")
                     .replace(/\s+/g, " ")
                     .trim();
-
-                const style = $(el).find("div[style]").attr("style") || "";
+					
+				const style =
+                    $(el).find("div[style]").attr("style") ||
+					$(el).find(".card-content-image").attr("style") ||"";
+				
                 const match = style.match(/url\((.*?)\)/);
-                const poster = match ? match[1] : "";
+                const poster = match 
+					? match[1].replace(/['"]/g, "") : "";
 
                 if (link && title) {
                     metas.push({
@@ -109,6 +135,11 @@ builder.defineMetaHandler(async ({ type, id }) => {
 	const realUrl = Buffer.from(id, "base64").toString("utf8");
 
     try {
+		
+		const referer = realUrl.includes("khmerdrama.com")
+        ? "https://www.khmerdrama.com/"
+        : "https://www.khmeravenue.com/";
+		
         const { data } = await axios.get(realUrl, {
             headers: {
                 "User-Agent":
@@ -352,7 +383,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
     const epRes = await axios.get(realUrl, {
       headers: {
         "User-Agent": UA,
-        "Referer": "https://www.khmeravenue.com/"
+        "Referer": realUrl.includes("khmerdrama.com")
+			? "https://www.khmerdrama.com/"
+			: "https://www.khmeravenue.com/"
       },
       timeout: 15000
     });
