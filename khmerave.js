@@ -316,46 +316,37 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
 
-    const okRes = await axios.get(okUrl, {
+    // Extract video ID from /videoembed/
+    const videoId = okUrl.split("/videoembed/")[1]?.split("?")[0];
+    if (!videoId) return null;
+
+    const metaUrl = `https://ok.ru/dk?cmd=videoPlayerMetadata&mid=${videoId}`;
+
+    const metaRes = await axios.get(metaUrl, {
       headers: {
         "User-Agent": ua,
-        "Referer": "https://ok.ru/",
+        "Referer": okUrl,
+        "Origin": "https://ok.ru"
       },
       timeout: 15000
     });
 
-    let html = okRes.data;
-    if (typeof html !== "string") {
-      html = String(html);
-    }
+    const metaData = metaRes.data;
 	
-    // Decode HTML escaping
-    html = html
-      .replace(/\\&quot;/g, '"')
-      .replace(/&quot;/g, '"')
-      .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
+	console.log("OK metadata response:", metaData);
 
-    // TEMP DEBUG
-    console.log("OK HTML snippet:", html.slice(0, 2000));	  
+    if (metaData?.hlsManifestUrl) {
+      return metaData.hlsManifestUrl;
+    }
 
-    const patterns = [
-      /"ondemandHls"\s*:\s*"([^"]+)/,
-      /"hlsManifestUrl"\s*:\s*"([^"]+)/,
-      /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/
-    ];
-
-    for (const re of patterns) {
-      const m = html.match(re);
-      if (m?.[1]) {
-		return m[1];
-      }
+    if (metaData?.ondemandHls) {
+      return metaData.ondemandHls;
     }
 
     return null;
 
   } catch (err) {
-    console.error("OK resolver error:", err.message);  
+    console.error("OK resolver error:", err.message);
     return null;
   }
 }
