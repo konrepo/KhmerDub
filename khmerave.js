@@ -429,6 +429,7 @@ async function handleEpisodeOne(url, UA) {
 
 
 builder.defineStreamHandler(async ({ type, id }) => {
+  console.log("STREAM HANDLER CALLED:", type, id);
   if (type !== "series") return { streams: [] };
   
   const realUrl = Buffer.from(id, "base64")
