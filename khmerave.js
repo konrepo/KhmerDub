@@ -329,6 +329,9 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       html = String(html);
     }
 	
+	// Remove log later
+    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));	
+	
     // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
@@ -336,12 +339,23 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");	  
 
+    // Print snippet AFTER decoding, Remove log later
+    const pos = html.indexOf("ondemandHls");
+    if (pos !== -1) {
+      console.log("=== DECODED SNIPPET START ===");
+      console.log(html.slice(pos - 200, pos + 500));
+      console.log("=== DECODED SNIPPET END ===");
+    }	
+
     const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
 
     if (!match || !match[1]) {	
       return null;
     }
-    
+ 
+ 	// Remove log later
+    console.log("Extracted HLS:", match[1]);
+ 
     return match[1];
 
   } catch (err) {
@@ -446,6 +460,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
     // OK.ru resolver
     if (cand.includes("ok.ru")) {
       const direct = await resolveOkRuToDirect(cand, axios, UA);
+	  console.log("Direct stream:", direct);  //remove log later
 
       if (!direct) return { streams: [] };
 	  
