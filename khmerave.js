@@ -463,11 +463,15 @@ async function handleEpisodeOne(url, UA) {
     });
 
     const html = epRes.data;
+	console.log("EP1 HTML length:", html.length);
+	
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
-
+	console.log("EP1 candidate:", candidate);
+	
     if (!candidate) return { streams: [] };
 
     const cand = normalizeOkUrl(candidate);
+	
     const direct = await resolveOkRuToDirect(cand, axios, UA);
 
     if (!direct) return { streams: [] };
@@ -487,8 +491,9 @@ async function handleEpisodeOne(url, UA) {
         {
           title: formattedTitle,
           url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
-          season: 1,
-          episode: 1,
+		  behaviorHints: {
+			notWebReady: true
+		  }	  
         }
       ]
     };
@@ -561,13 +566,15 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: formattedTitle,
-            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`
-			season: 1,
-			episode: epNumber,
+            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+            behaviorHints: {
+			  notWebReady: true
+			}
           }
         ]
       };
     }
+	
 
     // If candidate is already a direct media URL (.m3u8 or .mp4), return as-is
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
