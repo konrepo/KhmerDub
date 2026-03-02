@@ -1,4 +1,4 @@
-const { addonBuilder } = require("stremio-addon-sdk");
+const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "community.khmerdub.world",
@@ -315,7 +315,6 @@ function normalizeOkUrl(url) {
 async function resolveOkRuToDirect(iframeUrl, axios, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
-    console.log("OK Resolver: Fetching embed:", okUrl);
 
     const okRes = await axios.get(okUrl, {
       headers: {
@@ -326,128 +325,48 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     });
 
     let html = okRes.data;
-    if (typeof html !== "string") html = String(html);
 
-    console.log("OK Resolver: Embed page loaded");
+    if (typeof html !== "string") {
+      html = String(html);
+    }
 
-    // Decode common escapes
-    html = html
-      .replace(/\\&quot;/g, '"')
-      .replace(/&quot;/g, '"')
+    // Find metadata JSON
+    const metaMatch = html.match(/"metadata"\s*:\s*"(\{.*?\})"/);	
+
+    if (!metaMatch?.[1]) return null;
+
+    const metaStr = metaMatch[1]
+      .replace(/\\"/g, '"')
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    // =========================
-    // PRIMARY: data-options JSON
-    // =========================
-    const optionsMatch = html.match(/data-options="([^"]+)"/);
+    const metadata = JSON.parse(metaStr);
 
-    if (optionsMatch?.[1]) {
-      console.log("OK Resolver: Found data-options JSON");
+    // First: direct MP4
+    if (metadata?.videos?.length) {
+      const hd = metadata.videos.find(v => v.name === "hd");
+      const sd = metadata.videos.find(v => v.name === "sd");
+      const selected = hd || sd || metadata.videos[0];
 
-      try {
-        const decoded = optionsMatch[1]
-          .replace(/&quot;/g, '"')
-          .replace(/&amp;/g, '&');
-
-        const optionsJson = JSON.parse(decoded);
-
-        if (optionsJson?.flashvars?.metadata) {
-
-          // IMPORTANT: safely unescape metadata
-          const metaStr = optionsJson.flashvars.metadata
-            .replace(/\\"/g, '"')
-            .replace(/\\u0026/g, "&")
-            .replace(/\\\//g, "/");
-
-          const metadata = JSON.parse(metaStr);
-
-          if (metadata?.ondemandHls) {
-            console.log("OK Resolver: Using metadata ondemandHls");
-            console.log("FINAL HLS URL:", metadata.ondemandHls);
-            return metadata.ondemandHls;
-          }
-
-          if (metadata?.hlsManifestUrl) {
-            console.log("OK Resolver: Using metadata hlsManifestUrl");
-            console.log("FINAL HLS URL:", metadata.hlsManifestUrl);
-            return metadata.hlsManifestUrl;
-          }
-
-          // WULIN EP1 FIX — fallback to direct MP4
-          if (metadata?.videos?.length) {
-
-            const hd = metadata.videos.find(v => v.name === "hd");
-            const sd = metadata.videos.find(v => v.name === "sd");
-
-            const selected = hd || sd || metadata.videos[0];
-
-            if (selected?.url) {
-              console.log("OK Resolver: Using direct MP4 from metadata.videos");
-              console.log("FINAL VIDEO URL:", selected.url);
-              return selected.url;
-            }
-          }
-		}  
-      } catch (err) {
-        console.log("OK Resolver: data-options parse failed");
+      if (selected?.url) {
+        return selected.url;
       }
     }
 
-    // =========================
-    // INLINE fallback
-    // =========================
-    const inlinePatterns = [
-      { name: "ondemandHls", re: /"ondemandHls"\s*:\s*"([^"]+)/ },
-      { name: "hlsManifestUrl", re: /"hlsManifestUrl"\s*:\s*"([^"]+)/ },
-      { name: "hlsMasterPlaylistUrl", re: /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/ }
-    ];
-
-    for (const p of inlinePatterns) {
-      const m = html.match(p.re);
-      if (m?.[1]) {
-
-        const url = m[1];
-
-        if (url.includes("videoPlayerCdn")) {
-          console.log("Using videoPlayerCdn URL");
-
-          const cleaned = url
-            .replace(/\\u0026/g, "&")
-            .replace(/\\\//g, "/")
-            .replace(/\\&/g, "&");
-
-          console.log("FINAL HLS URL:", cleaned);
-          return cleaned;
-        }
-
-        console.log(`OK Resolver: HLS found via inline key (${p.name})`);
-        console.log("FINAL HLS URL:", url);
-        return url;
-      }
+    // Second: hlsManifestUrl
+    if (metadata?.hlsManifestUrl) {
+      return metadata.hlsManifestUrl;
     }
 
-    // =========================
-    // Bruteforce okcdn
-    // =========================
-    const brute = html.match(/https:\\\/\\\/[^"']+okcdn\.ru[^"']+\.m3u8[^"']*/i);
-    if (brute?.[0]) {
-
-      const cleaned = brute[0]
-        .replace(/\\u0026/g, "&")
-        .replace(/\\\//g, "/")
-        .replace(/\\&/g, "&");
-
-      console.log("OK Resolver: HLS found via bruteforce okcdn m3u8");
-      console.log("FINAL HLS URL:", cleaned);
-      return cleaned;
+    // Third: ondemandHls
+    if (metadata?.ondemandHls) {
+      return metadata.ondemandHls;
     }
 
-    console.log("OK Resolver: No HLS URL found");
     return null;
 
   } catch (err) {
-    console.error("OK Resolver error:", err.message);
+    console.error("OK resolver error:", err.message);
     return null;
   }
 }
@@ -465,15 +384,11 @@ async function handleEpisodeOne(url, UA) {
     });
 
     const html = epRes.data;
-	console.log("EP1 HTML length:", html.length);
-	
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
-	console.log("EP1 candidate:", candidate);
-	
+
     if (!candidate) return { streams: [] };
 
     const cand = normalizeOkUrl(candidate);
-	
     const direct = await resolveOkRuToDirect(cand, axios, UA);
 
     if (!direct) return { streams: [] };
@@ -492,11 +407,17 @@ async function handleEpisodeOne(url, UA) {
       streams: [
         {
           title: formattedTitle,
-          url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}&t=${Date.now()}`,
-		  behaviorHints: {
-			notWebReady: true,
-			proxyHeaders: null
-		  }	  
+          url: direct,
+          season: 1,
+          episode: 1,
+          behaviorHints: {
+            proxyHeaders: {
+              request: {
+                Referer: "https://ok.ru/",
+                "User-Agent": UA
+              }
+            }
+          }
         }
       ]
     };
@@ -569,16 +490,21 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: formattedTitle,
-            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}&t=${Date.now()}`,
+            url: direct,
+			season: 1,
+			episode: epNumber,
             behaviorHints: {
-			  notWebReady: true,
-			  proxyHeaders: null
-			}
+              proxyHeaders: {
+                request: {
+                  Referer: "https://ok.ru/",
+                  "User-Agent": UA
+                }
+              }
+            }
           }
         ]
       };
     }
-	
 
     // If candidate is already a direct media URL (.m3u8 or .mp4), return as-is
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
@@ -600,7 +526,5 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
-const { serveHTTP } = require("stremio-addon-sdk");
 const port = process.env.PORT || 7000;
 serveHTTP(builder.getInterface(), { port });
-console.log("Addon running on port", port);
