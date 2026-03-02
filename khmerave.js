@@ -388,7 +388,7 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
               return selected.url;
             }
           }
-		  
+		}  
       } catch (err) {
         console.log("OK Resolver: data-options parse failed");
       }
