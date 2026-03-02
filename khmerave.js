@@ -390,13 +390,55 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
         // Skip non-playable videoPlayerCdn URLs
         if (url.includes("videoPlayerCdn")) {
           console.log("Skipping videoPlayerCdn URL (not playable)");
-		  continue;
+          continue;
         }
 
         console.log(`OK Resolver: HLS found via inline key (${p.name})`);
         console.log("FINAL HLS URL:", url);
         return url;
       }
+    }
+
+    // EXTRA FALLBACK 1: escaped metadata JSON
+    const metaMatch = html.match(/"metadata"\s*:\s*"(\{.*?\})"/);
+    if (metaMatch?.[1]) {
+
+      try {
+        const metaStr = metaMatch[1]
+          .replace(/\\"/g, '"')
+          .replace(/\\u0026/g, "&")
+          .replace(/\\\//g, "/");
+
+        const meta = JSON.parse(metaStr);
+
+        const hls =
+          meta?.ondemandHls ||
+          meta?.hlsManifestUrl ||
+          meta?.hlsMasterPlaylistUrl;
+
+        if (hls) {
+          console.log("OK Resolver: HLS found via escaped metadata JSON");
+          console.log("FINAL HLS URL:", hls);
+          return hls;
+        }
+
+      } catch (e) {
+        console.log("OK Resolver: escaped metadata JSON parse failed");
+      }
+    }
+
+    // EXTRA FALLBACK 2: brute force okcdn m3u8
+    const brute = html.match(/https:\\\/\\\/[^"']+okcdn\.ru[^"']+\.m3u8[^"']*/i);
+    if (brute?.[0]) {
+
+      const cleaned = brute[0]
+        .replace(/\\u0026/g, "&")
+        .replace(/\\\//g, "/")
+        .replace(/\\&/g, "&");
+
+      console.log("OK Resolver: HLS found via bruteforce okcdn m3u8");
+      console.log("FINAL HLS URL:", cleaned);
+      return cleaned;
     }
 
     console.log("OK Resolver: No HLS URL found");
