@@ -561,7 +561,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: formattedTitle,
-            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`
 			season: 1,
 			episode: epNumber,
           }
