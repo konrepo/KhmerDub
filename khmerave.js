@@ -202,7 +202,8 @@ builder.defineMetaHandler(async ({ type, id }) => {
         const { data } = await axios.get(realUrl, {
             headers: {
                 "User-Agent":
-                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36",
+				"Referer": referer
             },
             timeout: 15000
         });
@@ -221,13 +222,13 @@ builder.defineMetaHandler(async ({ type, id }) => {
             if (match) poster = match[1];
         }
 
-        // Episode
+        // Episode list
         let episodes = [];
 
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
             .each((i, el) => {
                 const link = $(el).attr("href");
-                if (link) {
+                if (link && link.includes("/videos/")) {
                     episodes.push(link);
                 }
             });
@@ -238,11 +239,8 @@ builder.defineMetaHandler(async ({ type, id }) => {
         }
 
         const videos = episodes.map((link, index) => {
-			const isAlbum = link.includes("/album/");
-			const episodeUrl = isAlbum ? link + "#ep1" : link;
-			
 			return {				
-				id: Buffer.from(episodeUrl).toString("base64"),
+				id: Buffer.from(link).toString("base64"),
 				season: 1,
 				episode: index + 1,
 				title: `Episode ${String(index + 1).padStart(2, "0")}`,
@@ -266,7 +264,6 @@ builder.defineMetaHandler(async ({ type, id }) => {
         return { meta: null };
     }
 });
-
 
 function tryExtractVideoCandidateFromKhmerAvenue(html) {
   // Base64.decode
@@ -438,10 +435,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
   console.log("STREAM HANDLER CALLED:", type, id);
   if (type !== "series") return { streams: [] };
   
-  const realUrl = Buffer.from(id, "base64")
-    .toString("utf8")
-    .replace("#ep1", "");
-  
+  const realUrl = Buffer.from(id, "base64").toString("utf8");
   const UA =
     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
 
