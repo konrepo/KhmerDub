@@ -328,24 +328,13 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     if (typeof html !== "string") {
       html = String(html);
     }
-	
-	// Remove log later
-    console.log("OK embed has ondemandHls?", html.includes("ondemandHls"));	
-	
+		
     // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");	  
-
-    // Print snippet AFTER decoding, Remove log later
-    const pos = html.indexOf("ondemandHls");
-    if (pos !== -1) {
-      console.log("=== DECODED SNIPPET START ===");
-      console.log(html.slice(pos - 200, pos + 500));
-      console.log("=== DECODED SNIPPET END ===");
-    }	
 
     let match = null;
 
@@ -370,9 +359,6 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     }
 
     const cleanUrl = match[1].replace(/\\&/g, "&");
-
- 	// Remove log later
-    console.log("Extracted HLS:", cleanUrl);
 
     return cleanUrl;
 
