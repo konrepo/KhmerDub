@@ -366,14 +366,15 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     }
 
     if (!match || !match[1]) {	
-      console.log("HLS pattern not found");
       return null;
     }
- 
+
+    const cleanUrl = match[1].replace(/\\&/g, "&");
+
  	// Remove log later
-    console.log("Extracted HLS:", match[1]);
- 
-    return match[1];
+    console.log("Extracted HLS:", cleanUrl);
+
+    return cleanUrl;
 
   } catch (err) {
     console.error("OK resolver error:", err.message);  
