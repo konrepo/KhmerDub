@@ -478,9 +478,10 @@ async function handleEpisodeOne(url, UA) {
       streams: [
         {
           title: formattedTitle,
-          url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+          url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}&t=${Date.now()}`,
 		  behaviorHints: {
-			notWebReady: true
+			notWebReady: true,
+			proxyHeaders: null
 		  }	  
         }
       ]
@@ -554,9 +555,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: formattedTitle,
-            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+            url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}&t=${Date.now()}`,
             behaviorHints: {
-			  notWebReady: true
+			  notWebReady: true,
+			  proxyHeaders: null
 			}
           }
         ]
