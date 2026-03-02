@@ -326,9 +326,7 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     });
 
     let html = okRes.data;
-    if (typeof html !== "string") {
-      html = String(html);
-    }
+    if (typeof html !== "string") html = String(html);
 
     console.log("OK Resolver: Embed page loaded");
 
@@ -339,7 +337,9 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       .replace(/\\u0026/g, "&")
       .replace(/\\\//g, "/");
 
-    // Try extracting from data-options JSON
+    // =========================
+    // PRIMARY: data-options JSON
+    // =========================
     const optionsMatch = html.match(/data-options="([^"]+)"/);
 
     if (optionsMatch?.[1]) {
@@ -353,30 +353,38 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
         const optionsJson = JSON.parse(decoded);
 
         if (optionsJson?.flashvars?.metadata) {
-          const metadata = JSON.parse(optionsJson.flashvars.metadata);
 
-          if (metadata?.ondemandHls) {
-            console.log("OK Resolver: HLS found via data-options (ondemandHls)");
-            console.log("FINAL HLS URL:", metadata.ondemandHls);
-            return metadata.ondemandHls;
-          }
+          // IMPORTANT: safely unescape metadata
+          const metaStr = optionsJson.flashvars.metadata
+            .replace(/\\"/g, '"')
+            .replace(/\\u0026/g, "&")
+            .replace(/\\\//g, "/");
+
+          const metadata = JSON.parse(metaStr);
 
           if (metadata?.hlsManifestUrl) {
-            console.log("OK Resolver: HLS found via data-options (hlsManifestUrl)");
+            console.log("OK Resolver: Using metadata hlsManifestUrl");
             console.log("FINAL HLS URL:", metadata.hlsManifestUrl);
             return metadata.hlsManifestUrl;
           }
+
+          if (metadata?.ondemandHls) {
+            console.log("OK Resolver: Using metadata ondemandHls");
+            console.log("FINAL HLS URL:", metadata.ondemandHls);
+            return metadata.ondemandHls;
+          }
         }
+
       } catch (err) {
         console.log("OK Resolver: data-options parse failed");
       }
-    } else {
-      console.log("OK Resolver: No data-options found");
     }
 
-    // Fallback: inline HLS keys
+    // =========================
+    // INLINE fallback
+    // =========================
     const inlinePatterns = [
-      { name: "ondemandHls", re: /"ondemandHls"\s*:\s*"([^"]+)/ },	
+      { name: "ondemandHls", re: /"ondemandHls"\s*:\s*"([^"]+)/ },
       { name: "hlsManifestUrl", re: /"hlsManifestUrl"\s*:\s*"([^"]+)/ },
       { name: "hlsMasterPlaylistUrl", re: /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/ }
     ];
@@ -387,7 +395,6 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 
         const url = m[1];
 
-        // Skip non-playable videoPlayerCdn URLs
         if (url.includes("videoPlayerCdn")) {
           console.log("Using videoPlayerCdn URL");
 
@@ -406,35 +413,9 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       }
     }
 
-    // EXTRA FALLBACK 1: escaped metadata JSON
-    const metaMatch = html.match(/"metadata"\s*:\s*"(\{.*?\})"/);
-    if (metaMatch?.[1]) {
-
-      try {
-        const metaStr = metaMatch[1]
-          .replace(/\\"/g, '"')
-          .replace(/\\u0026/g, "&")
-          .replace(/\\\//g, "/");
-
-        const meta = JSON.parse(metaStr);
-
-        const hls =
-          meta?.ondemandHls ||
-          meta?.hlsManifestUrl ||
-          meta?.hlsMasterPlaylistUrl;
-
-        if (hls) {
-          console.log("OK Resolver: HLS found via escaped metadata JSON");
-          console.log("FINAL HLS URL:", hls);
-          return hls;
-        }
-
-      } catch (e) {
-        console.log("OK Resolver: escaped metadata JSON parse failed");
-      }
-    }
-
-    // EXTRA FALLBACK 2: brute force okcdn m3u8
+    // =========================
+    // Bruteforce okcdn
+    // =========================
     const brute = html.match(/https:\\\/\\\/[^"']+okcdn\.ru[^"']+\.m3u8[^"']*/i);
     if (brute?.[0]) {
 
