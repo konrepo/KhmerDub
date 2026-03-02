@@ -362,19 +362,33 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
 
           const metadata = JSON.parse(metaStr);
 
+          if (metadata?.ondemandHls) {
+            console.log("OK Resolver: Using metadata ondemandHls");
+            console.log("FINAL HLS URL:", metadata.ondemandHls);
+            return metadata.ondemandHls;
+          }
+
           if (metadata?.hlsManifestUrl) {
             console.log("OK Resolver: Using metadata hlsManifestUrl");
             console.log("FINAL HLS URL:", metadata.hlsManifestUrl);
             return metadata.hlsManifestUrl;
           }
 
-          if (metadata?.ondemandHls) {
-            console.log("OK Resolver: Using metadata ondemandHls");
-            console.log("FINAL HLS URL:", metadata.ondemandHls);
-            return metadata.ondemandHls;
-          }
-        }
+          // WULIN EP1 FIX — fallback to direct MP4
+          if (metadata?.videos?.length) {
 
+            const hd = metadata.videos.find(v => v.name === "hd");
+            const sd = metadata.videos.find(v => v.name === "sd");
+
+            const selected = hd || sd || metadata.videos[0];
+
+            if (selected?.url) {
+              console.log("OK Resolver: Using direct MP4 from metadata.videos");
+              console.log("FINAL VIDEO URL:", selected.url);
+              return selected.url;
+            }
+          }
+		  
       } catch (err) {
         console.log("OK Resolver: data-options parse failed");
       }
