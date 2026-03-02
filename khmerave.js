@@ -202,8 +202,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
         const { data } = await axios.get(realUrl, {
             headers: {
                 "User-Agent":
-                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36",
-				"Referer": referer
+                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
             },
             timeout: 15000
         });
@@ -222,13 +221,13 @@ builder.defineMetaHandler(async ({ type, id }) => {
             if (match) poster = match[1];
         }
 
-        // Episode list
+        // Episode
         let episodes = [];
 
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
             .each((i, el) => {
                 const link = $(el).attr("href");
-                if (link && link.includes("/videos/")) {
+                if (link) {
                     episodes.push(link);
                 }
             });
@@ -239,8 +238,11 @@ builder.defineMetaHandler(async ({ type, id }) => {
         }
 
         const videos = episodes.map((link, index) => {
+			const isAlbum = link.includes("/album/");
+			const episodeUrl = isAlbum ? link + "#ep1" : link;
+			
 			return {				
-				id: Buffer.from(link).toString("base64"),
+				id: Buffer.from(episodeUrl).toString("base64"),
 				season: 1,
 				episode: index + 1,
 				title: `Episode ${String(index + 1).padStart(2, "0")}`,
@@ -264,6 +266,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
         return { meta: null };
     }
 });
+
 
 function tryExtractVideoCandidateFromKhmerAvenue(html) {
   // Base64.decode
@@ -316,60 +319,33 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     const okRes = await axios.get(okUrl, {
       headers: {
         "User-Agent": ua,
-        "Referer": "https://ok.ru/"
+        "Referer": "https://ok.ru/",
       },
       timeout: 15000
     });
 
     let html = okRes.data;
-
     if (typeof html !== "string") {
       html = String(html);
     }
+	
+    // Decode HTML escaping
+    html = html
+      .replace(/\\&quot;/g, '"')
+      .replace(/&quot;/g, '"')
+      .replace(/\\u0026/g, "&")
+      .replace(/\\\//g, "/");	  
 
-    // Find metadata JSON
-const metaMatch = html.match(/"metadata"\s*:\s*"(\{.*?\})"/);	
+    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
 
-if (!metaMatch?.[1]) return null;
-
-const metaStr = metaMatch[1]
-  .replace(/\\"/g, '"')
-  .replace(/\\u0026/g, "&")
-  .replace(/\\\//g, "/");
-
-const metadata = JSON.parse(metaStr);
-
-// First: direct MP4 (most stable for Stremio)
-if (metadata?.videos?.length) {
-  const hd = metadata.videos.find(v => v.name === "hd");
-  const sd = metadata.videos.find(v => v.name === "sd");
-  const selected = hd || sd || metadata.videos[0];
-
-  if (selected?.url) {
-    console.log("OK Resolver: Using direct MP4");
-    console.log("FINAL VIDEO URL:", selected.url);
-    return selected.url;
-  }
-}
-
-// Second: hlsManifestUrl
-if (metadata?.hlsManifestUrl) {
-  console.log("OK Resolver: Using hlsManifestUrl");
-  console.log("FINAL HLS URL:", metadata.hlsManifestUrl);
-  return metadata.hlsManifestUrl;
-}
-
-// Third: ondemandHls
-if (metadata?.ondemandHls) {
-  console.log("OK Resolver: Using ondemandHls");
-  console.log("FINAL HLS URL:", metadata.ondemandHls);
-  return metadata.ondemandHls;
-}
-
-return null;
+    if (!match || !match[1]) {	
+      return null;
+    }
+    
+    return match[1];
 
   } catch (err) {
-    console.error("OK resolver error:", err.message);
+    console.error("OK resolver error:", err.message);  
     return null;
   }
 }
@@ -432,10 +408,12 @@ async function handleEpisodeOne(url, UA) {
 
 
 builder.defineStreamHandler(async ({ type, id }) => {
-  console.log("STREAM HANDLER CALLED:", type, id);
   if (type !== "series") return { streams: [] };
   
-  const realUrl = Buffer.from(id, "base64").toString("utf8");
+  const realUrl = Buffer.from(id, "base64")
+    .toString("utf8")
+    .replace("#ep1", "");
+  
   const UA =
     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
 
@@ -495,6 +473,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 			season: 1,
 			episode: epNumber,
             behaviorHints: {
+              notWebReady: true,
               proxyHeaders: {
                 request: {
                   Referer: "https://ok.ru/",
