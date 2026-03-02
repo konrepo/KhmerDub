@@ -331,39 +331,45 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     }
 
     // Find metadata JSON
-    const metaMatch = html.match(/"metadata"\s*:\s*"(\{.*?\})"/);	
+const metaMatch = html.match(/"metadata"\s*:\s*"(\{.*?\})"/);	
 
-    if (!metaMatch?.[1]) return null;
+if (!metaMatch?.[1]) return null;
 
-    const metaStr = metaMatch[1]
-      .replace(/\\"/g, '"')
-      .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
+const metaStr = metaMatch[1]
+  .replace(/\\"/g, '"')
+  .replace(/\\u0026/g, "&")
+  .replace(/\\\//g, "/");
 
-    const metadata = JSON.parse(metaStr);
+const metadata = JSON.parse(metaStr);
 
-    // First: direct MP4
-    if (metadata?.videos?.length) {
-      const hd = metadata.videos.find(v => v.name === "hd");
-      const sd = metadata.videos.find(v => v.name === "sd");
-      const selected = hd || sd || metadata.videos[0];
+// First: direct MP4 (most stable for Stremio)
+if (metadata?.videos?.length) {
+  const hd = metadata.videos.find(v => v.name === "hd");
+  const sd = metadata.videos.find(v => v.name === "sd");
+  const selected = hd || sd || metadata.videos[0];
 
-      if (selected?.url) {
-        return selected.url;
-      }
-    }
+  if (selected?.url) {
+    console.log("OK Resolver: Using direct MP4");
+    console.log("FINAL VIDEO URL:", selected.url);
+    return selected.url;
+  }
+}
 
-    // Second: hlsManifestUrl
-    if (metadata?.hlsManifestUrl) {
-      return metadata.hlsManifestUrl;
-    }
+// Second: hlsManifestUrl
+if (metadata?.hlsManifestUrl) {
+  console.log("OK Resolver: Using hlsManifestUrl");
+  console.log("FINAL HLS URL:", metadata.hlsManifestUrl);
+  return metadata.hlsManifestUrl;
+}
 
-    // Third: ondemandHls
-    if (metadata?.ondemandHls) {
-      return metadata.ondemandHls;
-    }
+// Third: ondemandHls
+if (metadata?.ondemandHls) {
+  console.log("OK Resolver: Using ondemandHls");
+  console.log("FINAL HLS URL:", metadata.ondemandHls);
+  return metadata.ondemandHls;
+}
 
-    return null;
+return null;
 
   } catch (err) {
     console.error("OK resolver error:", err.message);
