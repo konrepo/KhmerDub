@@ -347,9 +347,26 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
       console.log("=== DECODED SNIPPET END ===");
     }	
 
-    const match = html.match(/"ondemandHls"\s*:\s*"([^"]+)/);
+    let match = null;
+
+    const patterns = [
+      /"ondemandHls"\s*:\s*"([^"]+)/,
+      /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/,
+      /"hlsManifestUrl"\s*:\s*"([^"]+)/,
+      /"metadataUrl"\s*:\s*"(https:[^"]+\.m3u8[^"]*)"/,
+      /"(https:[^"]+\.m3u8[^"]*)"/
+    ];
+
+    for (const re of patterns) {
+      const m = html.match(re);
+      if (m && m[1]) {
+        match = m;
+        break;
+      }
+    }
 
     if (!match || !match[1]) {	
+      console.log("HLS pattern not found");
       return null;
     }
  
