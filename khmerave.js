@@ -229,39 +229,42 @@ builder.defineMetaHandler(async ({ type, id }) => {
                 const link = $(el).attr("href");
                 if (!link) return;
 
-				let text = $(el).text().trim();
-				text = text.replace(/\s+/g, " ");
-				
-				// Exclude Episode 1 (album page, not real video)
-				if (/^Episode\s+1$/i.test(text)) return;
-				
-				episodes.push(link);
+                // Exclude random post_type video (bad Episode 1)
+                if (link.includes("?post_type=videos")) return;
+
+                let epNumber = 1;
+
+                // Album page = Episode 1
+                if (!link.includes("/album/")) {
+                    const match = link.match(/-(\d+)/);
+                    if (match) {
+                        epNumber = parseInt(match[1], 10);
+                    }
+                }
+
+                episodes.push({ link, epNumber });
             });
 
         if (episodes.length) {
-            episodes = [...new Set(episodes)];
-            episodes = episodes.reverse();
+            // Remove duplicates
+            episodes = [...new Map(episodes.map(e => [e.link, e])).values()];
+
+            // Sort by episode number
+            episodes.sort((a, b) => a.epNumber - b.epNumber);
         }
 
-        const videos = episodes.map((link, index) => {
-			const isAlbum = link.includes("/album/");
-			const episodeUrl = isAlbum ? link + "#ep1" : link;
+        const videos = episodes.map((item) => {
+            const isAlbum = item.link.includes("/album/");
+            const episodeUrl = isAlbum ? item.link + "#ep1" : item.link;
 
-			// Fix Episode 0 → extract number from URL (e.g. -20-end)
-			let epNumber = index + 1;
-			const match = link.match(/-(\d+)/);
-			if (match) {
-				epNumber = parseInt(match[1], 10);
-			}
-			
-			return {				
-				id: Buffer.from(episodeUrl).toString("base64"),
-				season: 1,
-				episode: epNumber,
-				title: `Episode ${String(epNumber).padStart(2, "0")}`,
-				thumbnail: poster
-			};
-		});
+            return {
+                id: Buffer.from(episodeUrl).toString("base64"),
+                season: 1,
+                episode: item.epNumber,
+                title: `Episode ${String(item.epNumber).padStart(2, "0")}`,
+                thumbnail: poster
+            };
+        });
 
         return {
             meta: {
