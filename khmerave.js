@@ -404,17 +404,18 @@ async function handleEpisodeOne(url, UA) {
       streams: [
         {
           title: formattedTitle,
-          url: direct,
+          //url: direct,
+		  url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
           season: 1,
           episode: 1,
-          behaviorHints: {
-            proxyHeaders: {
-              request: {
-                Referer: "https://ok.ru/",
-                "User-Agent": UA
-              }
-            }
-          }
+          //behaviorHints: {
+            //proxyHeaders: {
+              //request: {
+                //Referer: "https://ok.ru/",
+                //"User-Agent": UA
+              //}
+            //}
+          //}
         }
       ]
     };
@@ -488,18 +489,19 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: formattedTitle,
-            url: direct,
+            //url: direct,
+			url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
 			season: 1,
 			episode: epNumber,
-            behaviorHints: {
-              notWebReady: true,
-              proxyHeaders: {
-                request: {
-                  Referer: "https://ok.ru/",
-                  "User-Agent": UA
-                }
-              }
-            }
+            //behaviorHints: {
+              //notWebReady: true,
+              //proxyHeaders: {
+                //request: {
+                  //Referer: "https://ok.ru/",
+                  //"User-Agent": UA
+                //}
+              //}
+            //}
           }
         ]
       };
