@@ -1,59 +1,272 @@
 const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
-const express = require("express");
-const axios = require("axios");
-const cheerio = require("cheerio");
 
-// CONFIG
-const UA =
-  "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
-
-const BASE_URL =
-  process.env.BASE_URL || "https://khmerdub.onrender.com";
-
-// MANIFEST & BUILDER
 const manifest = {
-  id: "community.khmerdub.world",
-  version: "3.0.2",
-  name: "KhmerDub",
-  description: "Stream Asian dramas dubbed in Khmer.",
-  logo: "https://avatars.githubusercontent.com/u/32822347?v=4",
-  developer: "TheDevilz",
-  resources: ["catalog", "meta", "stream"],
-  types: ["series"],
-  catalogs: [
-    {
-      type: "series",
-      id: "khmerave",
-      name: "KhmerAve",
-      genres: ["KhmerAve"],
-      extra: [
-        { name: "skip", isRequired: false },
-        { name: "limit", isRequired: false },
-        { name: "search", isRequired: false }
-      ]
-    },
-    {
-      type: "series",
-      id: "merlkon",
-      name: "Merlkon",
-      genres: ["Merlkon"],
-      extra: [
-        { name: "skip", isRequired: false },
-        { name: "limit", isRequired: false },
-        { name: "search", isRequired: false }
-      ]
-    }
-  ]
+    id: "community.khmerdub.world",
+    version: "3.0.1",
+    name: "KhmerDub",
+    description: "Stream Asian dramas dubbed in Khmer.",
+    logo: "https://avatars.githubusercontent.com/u/32822347?v=4",
+	developer: "TheDevilz",
+    resources: ["catalog", "meta", "stream"],
+    types: ["series"],
+    catalogs: [
+        {
+            type: "series",
+            id: "khmerave",
+            name: "KhmerAve",
+			genres: ["KhmerAve"],
+            extra: [
+                { name: "skip", isRequired: false },
+				{ name: "limit", isRequired: false },
+				{ name: "search", isRequired: false }
+			]				
+        },
+        {
+            type: "series",
+            id: "merlkon",
+            name: "Merlkon",
+			genres: ["Merlkon"],
+            extra: [
+                { name: "skip", isRequired: false },
+				{ name: "limit", isRequired: false },
+				{ name: "search", isRequired: false }
+			]				
+        }		
+    ]
 };
 
 const builder = new addonBuilder(manifest);
 
-// HELPERS 
-function normalizeOkUrl(url) {
-  if (!url) return url;
-  if (url.startsWith("//")) return "https:" + url;
-  return url;
-}
+const axios = require("axios");
+const cheerio = require("cheerio");
+
+
+builder.defineCatalogHandler(async (args) => {
+
+    const { id, extra } = args;
+    if (id !== "khmerave" && id !== "merlkon") return { metas: [] };
+
+    try {
+		
+		// Search
+        if (extra?.search) {
+
+            const keyword = encodeURIComponent(extra.search);
+            let url;
+
+            if (id === "khmerave") {
+                url = `https://www.khmeravenue.com/?s=${keyword}`;
+            }
+
+            if (id === "merlkon") {
+                url = `https://www.khmerdrama.com/?s=${keyword}`;
+            }
+
+            const { data } = await axios.get(url, {
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+                    "Referer": id === "merlkon"
+                        ? "https://www.khmerdrama.com/"
+                        : "https://www.khmeravenue.com/"
+                },
+                timeout: 15000
+            });
+
+            const $ = cheerio.load(data);
+            let metas = [];
+
+            $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
+                const link = $(el).find("a").attr("href");
+
+                let title = $(el).find("h3").text().trim();
+                title = title
+                    .replace(/&#8217;/g, "'")
+                    .replace(/&amp;/g, "&")
+                    .replace(/\s+/g, " ")
+                    .trim();
+
+                const style =
+                    $(el).find("div[style]").attr("style") ||
+                    $(el).find(".card-content-image").attr("style") || "";
+
+                const match = style.match(/url\((.*?)\)/);
+                const poster = match
+                    ? match[1].replace(/['"]/g, "")
+                    : "";
+
+                if (link && title) {
+                    metas.push({
+                        id: Buffer.from(link).toString("base64"),
+                        type: "series",
+                        name: title,
+                        poster,
+                        posterShape: "regular"
+                    });
+                }
+            });
+
+            return { metas };
+        }
+        // End search
+
+        const skip = parseInt(extra?.skip || "0");
+
+        const WEBSITE_PAGE_SIZE = 18;
+        const PAGES_PER_BATCH = 3; // 3 website pages = ~54 items
+
+        const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
+
+        let metas = [];
+
+        for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
+			
+			let url;
+			
+			if (id === "khmerave") {
+				url = p === 1
+                    ? "https://www.khmeravenue.com/album/"
+                    : `https://www.khmeravenue.com/album/page/${p}/`;
+			}		
+
+			if (id === "merlkon") {
+				url = p === 1
+                    ? "https://www.khmerdrama.com/album/"
+                    : `https://www.khmerdrama.com/album/page/${p}/`;
+			}           
+
+            const { data } = await axios.get(url, {
+                headers: {
+                    "User-Agent":
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+					"Referer": id === "merlkon"
+                        ? "https://www.khmerdrama.com/"
+                        : "https://www.khmeravenue.com/"	
+                },
+                timeout: 15000
+            });
+
+            const $ = cheerio.load(data);
+
+            $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
+                const link = $(el).find("a").attr("href");
+
+                let title = $(el).find("h3").text().trim();
+                title = title
+                    .replace(/&#8217;/g, "'")
+                    .replace(/&amp;/g, "&")
+                    .replace(/\s+/g, " ")
+                    .trim();
+					
+				const style =
+                    $(el).find("div[style]").attr("style") ||
+					$(el).find(".card-content-image").attr("style") ||"";
+				
+                const match = style.match(/url\((.*?)\)/);
+                const poster = match 
+					? match[1].replace(/['"]/g, "") : "";
+
+                if (link && title) {
+                    metas.push({
+                        id: Buffer.from(link).toString("base64"),
+                        type: "series",
+                        name: title,
+                        poster,
+                        posterShape: "regular"
+                    });
+                }
+            });
+
+        }
+
+        return { metas };
+
+    } catch (err) {
+        console.error("Catalog error:", err.message);
+        return { metas: [] };
+    }
+});
+
+
+builder.defineMetaHandler(async ({ type, id }) => {
+    if (type !== "series") return { meta: null };
+	
+	const realUrl = Buffer.from(id, "base64").toString("utf8");
+
+    try {
+		
+		const referer = realUrl.includes("khmerdrama.com")
+        ? "https://www.khmerdrama.com/"
+        : "https://www.khmeravenue.com/";
+		
+        const { data } = await axios.get(realUrl, {
+            headers: {
+                "User-Agent":
+                    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+            },
+            timeout: 15000
+        });
+
+        const $ = cheerio.load(data);
+
+        // Series title
+        const pageTitle = $("h1").first().text().trim();
+
+        // Poster
+        let poster = "";
+        const imgDiv = $(".album-content-image");
+        if (imgDiv.length) {
+            const style = imgDiv.attr("style") || "";
+            const match = style.match(/url\((.*?)\)/);
+            if (match) poster = match[1];
+        }
+
+        // Episode
+        let episodes = [];
+
+        $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
+            .each((i, el) => {
+                const link = $(el).attr("href");
+                if (link) {
+                    episodes.push(link);
+                }
+            });
+
+        if (episodes.length) {
+            episodes = [...new Set(episodes)];
+            episodes = episodes.reverse();
+        }
+
+        const videos = episodes.map((link, index) => {
+			const isAlbum = link.includes("/album/");
+			const episodeUrl = isAlbum ? link + "#ep1" : link;
+			
+			return {				
+				id: Buffer.from(episodeUrl).toString("base64"),
+				season: 1,
+				episode: index + 1,
+				title: `Episode ${String(index + 1).padStart(2, "0")}`,
+				thumbnail: poster
+			};
+		});
+
+        return {
+            meta: {
+                id,
+                type: "series",
+                name: pageTitle || realUrl.split("/").filter(Boolean).pop().replace(/-/g, " "),
+                poster,
+                background: poster,
+                videos
+            }
+        };
+
+    } catch (err) {
+        console.error("Meta error:", err.message);
+        return { meta: null };
+    }
+});
+
 
 function tryExtractVideoCandidateFromKhmerAvenue(html) {
   // Base64.decode
@@ -66,7 +279,7 @@ function tryExtractVideoCandidateFromKhmerAvenue(html) {
     } catch {}
   }
 
-  // Common patterns
+  // Common patterns from Kodi (file:, iframe src, source src, playlist)
   const patterns = [
     /['"]?file['"]?\s*:\s*['"]([^'"]+)['"]/i,
     /<iframe[^>]*src=["']([^"']+)["']/i,
@@ -82,27 +295,48 @@ function tryExtractVideoCandidateFromKhmerAvenue(html) {
   return null;
 }
 
-// Extract m3u8 from OK iframe HTML
-async function resolveOkRuToDirect(iframeUrl, ua) {
+
+function htmlUnescape(s) {
+  return (s || "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function normalizeOkUrl(url) {
+  if (!url) return url;
+  if (url.startsWith("//")) return "https:" + url;
+  return url;
+}
+
+// Resolver
+async function resolveOkRuToDirect(iframeUrl, axios, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
 
     const okRes = await axios.get(okUrl, {
       headers: {
         "User-Agent": ua,
-        "Referer": "https://ok.ru/"
+        "Referer": "https://ok.ru/",
       },
       timeout: 15000
     });
 
     let html = okRes.data;
-    if (typeof html !== "string") html = String(html);
-
+    if (typeof html !== "string") {
+      html = String(html);
+    }
+		
+    // Decode HTML escaping
     html = html
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");
+      .replace(/\\\//g, "/");	  
+
+    let match = null;
 
     const patterns = [
       /"ondemandHls"\s*:\s*"([^"]+)/,
@@ -114,397 +348,182 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
 
     for (const re of patterns) {
       const m = html.match(re);
-      if (m && m[1]) return m[1].replace(/\\&/g, "&");
+      if (m && m[1]) {
+        match = m;
+        break;
+      }
     }
 
-    return null;
+    if (!match || !match[1]) {	
+      return null;
+    }
+
+    const cleanUrl = match[1].replace(/\\&/g, "&");
+
+    return cleanUrl;
+
   } catch (err) {
-    console.error("OK resolver error:", err.message);
+    console.error("OK resolver error:", err.message);  
     return null;
   }
 }
 
-// CATALOG HANDLER
-builder.defineCatalogHandler(async (args) => {
-  const { id, extra } = args;
-  if (id !== "khmerave" && id !== "merlkon") return { metas: [] };
 
+// Helper functions for EP1
+async function handleEpisodeOne(url, UA) {
   try {
-    if (extra?.search) {
-      const keyword = encodeURIComponent(extra.search);
-      let url;
-
-      if (id === "khmerave") url = `https://www.khmeravenue.com/?s=${keyword}`;
-      if (id === "merlkon") url = `https://www.khmerdrama.com/?s=${keyword}`;
-
-      const { data } = await axios.get(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-          Referer:
-            id === "merlkon"
-              ? "https://www.khmerdrama.com/"
-              : "https://www.khmeravenue.com/"
-        },
-        timeout: 15000
-      });
-
-      const $ = cheerio.load(data);
-      let metas = [];
-
-      $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
-        const link = $(el).find("a").attr("href");
-
-        let title = $(el).find("h3").text().trim();
-        title = title
-          .replace(/&#8217;/g, "'")
-          .replace(/&amp;/g, "&")
-          .replace(/\s+/g, " ")
-          .trim();
-
-        const style =
-          $(el).find("div[style]").attr("style") ||
-          $(el).find(".card-content-image").attr("style") ||
-          "";
-
-        const match = style.match(/url\((.*?)\)/);
-        const poster = match ? match[1].replace(/['"]/g, "") : "";
-
-        if (link && title) {
-          metas.push({
-            id: Buffer.from(link).toString("base64"),
-            type: "series",
-            name: title,
-            poster,
-            posterShape: "regular"
-          });
-        }
-      });
-
-      return { metas };
-    }
-
-    const skip = parseInt(extra?.skip || "0");
-    const WEBSITE_PAGE_SIZE = 18;
-    const PAGES_PER_BATCH = 3;
-    const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
-
-    let metas = [];
-
-    for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
-      let url;
-      if (id === "khmerave") {
-        url = p === 1 ? "https://www.khmeravenue.com/album/" : `https://www.khmeravenue.com/album/page/${p}/`;
-      }
-      if (id === "merlkon") {
-        url = p === 1 ? "https://www.khmerdrama.com/album/" : `https://www.khmerdrama.com/album/page/${p}/`;
-      }
-
-      const { data } = await axios.get(url, {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
-          Referer:
-            id === "merlkon"
-              ? "https://www.khmerdrama.com/"
-              : "https://www.khmeravenue.com/"
-        },
-        timeout: 15000
-      });
-
-      const $ = cheerio.load(data);
-
-      $("div.col-6.col-sm-4.thumbnail-container, div.card-content").each((i, el) => {
-        const link = $(el).find("a").attr("href");
-
-        let title = $(el).find("h3").text().trim();
-        title = title
-          .replace(/&#8217;/g, "'")
-          .replace(/&amp;/g, "&")
-          .replace(/\s+/g, " ")
-          .trim();
-
-        const style =
-          $(el).find("div[style]").attr("style") ||
-          $(el).find(".card-content-image").attr("style") ||
-          "";
-
-        const match = style.match(/url\((.*?)\)/);
-        const poster = match ? match[1].replace(/['"]/g, "") : "";
-
-        if (link && title) {
-          metas.push({
-            id: Buffer.from(link).toString("base64"),
-            type: "series",
-            name: title,
-            poster,
-            posterShape: "regular"
-          });
-        }
-      });
-    }
-
-    return { metas };
-  } catch (err) {
-    console.error("Catalog error:", err.message);
-    return { metas: [] };
-  }
-});
-
-// META HANDLER
-builder.defineMetaHandler(async ({ type, id }) => {
-  if (type !== "series") return { meta: null };
-
-  const realUrl = Buffer.from(id, "base64").toString("utf8");
-
-  try {
-    const { data } = await axios.get(realUrl, {
-      headers: { "User-Agent": UA },
-      timeout: 15000
-    });
-
-    const $ = cheerio.load(data);
-
-    const pageTitle = $("h1").first().text().trim();
-
-    let poster = "";
-    const imgDiv = $(".album-content-image");
-    if (imgDiv.length) {
-      const style = imgDiv.attr("style") || "";
-      const match = style.match(/url\((.*?)\)/);
-      if (match) poster = match[1];
-    }
-
-    let episodes = [];
-    $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]").each((i, el) => {
-      const link = $(el).attr("href");
-      if (link) episodes.push(link);
-    });
-
-    if (episodes.length) {
-      episodes = [...new Set(episodes)].reverse();
-    }
-
-    const videos = episodes.map((link, index) => {
-      const isAlbum = link.includes("/album/");
-      const episodeUrl = isAlbum ? link + "#ep1" : link;
-
-      return {
-        id: Buffer.from(episodeUrl).toString("base64"),
-        season: 1,
-        episode: index + 1,
-        title: `Episode ${String(index + 1).padStart(2, "0")}`,
-        thumbnail: poster
-      };
-    });
-
-    return {
-      meta: {
-        id,
-        type: "series",
-        name: pageTitle || realUrl.split("/").filter(Boolean).pop().replace(/-/g, " "),
-        poster,
-        background: poster,
-        videos
-      }
-    };
-  } catch (err) {
-    console.error("Meta error:", err.message);
-    return { meta: null };
-  }
-});
-
-/* ===============================
-   STREAM HANDLER
-   - If ok.ru iframe found → return /ok?iframe=...
-   - If direct .m3u8/mp4 candidate → return /proxy?url=...
-================================= */
-builder.defineStreamHandler(async ({ type, id }) => {
-  if (type !== "series") return { streams: [] };
-
-  const realUrl = Buffer.from(id, "base64").toString("utf8").replace("#ep1", "");
-
-  try {
-    const epRes = await axios.get(realUrl, {
+    const epRes = await axios.get(url, {
       headers: {
         "User-Agent": UA,
-        Referer: realUrl.includes("khmerdrama.com")
-          ? "https://www.khmerdrama.com/"
-          : "https://www.khmeravenue.com/"
+        "Referer": "https://www.khmeravenue.com/"
       },
       timeout: 15000
     });
 
     const html = epRes.data;
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+
+    if (!candidate) return { streams: [] };
+
+    const cand = normalizeOkUrl(candidate);
+    const direct = await resolveOkRuToDirect(cand, axios, UA);
+
+    if (!direct) return { streams: [] };
+
+    // Extract show name from URL
+    const showName = url
+      .split("/")
+      .filter(Boolean)
+      .slice(-1)[0]
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, c => c.toUpperCase());
+
+    const formattedTitle = `${showName}  S01:E01`;
+
+    return {
+      streams: [
+        {
+          title: formattedTitle,
+          url: direct,
+          season: 1,
+          episode: 1,
+          behaviorHints: {
+            proxyHeaders: {
+              request: {
+                Referer: "https://ok.ru/",
+                "User-Agent": UA
+              }
+            }
+          }
+        }
+      ]
+    };
+
+  } catch {
+    return { streams: [] };
+  }
+}
+
+
+builder.defineStreamHandler(async ({ type, id }) => {
+  if (type !== "series") return { streams: [] };
+  
+  const realUrl = Buffer.from(id, "base64")
+    .toString("utf8")
+    .replace("#ep1", "");
+  
+  const UA =
+    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
+
+  // Detect EP1 (album page)
+  if (realUrl.includes("/album/")) {
+    return await handleEpisodeOne(realUrl, UA);
+  }
+
+  try {
+    // Fetch episode page
+    const epRes = await axios.get(realUrl, {
+      headers: {
+        "User-Agent": UA,
+        "Referer": realUrl.includes("khmerdrama.com")
+			? "https://www.khmerdrama.com/"
+			: "https://www.khmeravenue.com/"
+      },
+      timeout: 15000
+    });
+
+    const html = epRes.data;
+
+    // Extract candidate link
+    const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+
     if (!candidate) return { streams: [] };
 
     const cand = normalizeOkUrl(candidate);
 
-    // If OK iframe → let SAME server resolve it and proxy it
+    // OK.ru resolver
     if (cand.includes("ok.ru")) {
-      const showName = realUrl
+      const direct = await resolveOkRuToDirect(cand, axios, UA);
+	  console.log("Direct stream:", direct);  //remove log later
+
+      if (!direct) return { streams: [] };
+	  
+	  // Extract show name from URL	  
+	  const showName = realUrl
         .split("/")
         .filter(Boolean)
         .slice(-1)[0]
-        .replace(/-\d+$/, "")
+        .replace(/-\d+$/, "") // remove episode number
         .replace(/-/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase());
+        .replace(/\b\w/g, c => c.toUpperCase());
+	  
+	  const epNumber = parseInt(
+        realUrl.match(/-(\d+)\//)?.[1] || "1",
+        10
+	  );
 
-      const epNumber = parseInt(realUrl.match(/-(\d+)\//)?.[1] || "1", 10);
-      const formattedTitle = `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
+	  const formattedTitle = `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
 
       return {
         streams: [
           {
             title: formattedTitle,
-            url: `${BASE_URL}/ok?iframe=${encodeURIComponent(cand)}`
+            url: direct,
+			season: 1,
+			episode: epNumber,
+            behaviorHints: {
+              notWebReady: true,
+              proxyHeaders: {
+                request: {
+                  Referer: "https://ok.ru/",
+                  "User-Agent": UA
+                }
+              }
+            }
           }
         ]
       };
     }
 
-    // If direct .m3u8/.mp4, proxy it anyway for iOS
+    // If candidate is already a direct media URL (.m3u8 or .mp4), return as-is
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
       return {
         streams: [
           {
             title: "KhmerDub",
-            url: `${BASE_URL}/proxy?url=${encodeURIComponent(cand)}`
+            url: cand
           }
         ]
       };
     }
 
     return { streams: [] };
+
   } catch (err) {
     console.error("Stream error:", err.message);
     return { streams: [] };
   }
 });
 
-/* ===============================
-   EXPRESS APP: proxy endpoints
-================================= */
-const app = express();
-
-// Preflight
-app.options(["/proxy", "/ok"], (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
-  res.sendStatus(200);
-});
-
-function setCors(res) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
-}
-
-/* ---------- OK ROUTE (ONLY ONE) ---------- */
-app.get("/ok", async (req, res) => {
-  setCors(res);
-
-  const iframe = req.query.iframe;
-  console.log("OK route hit. iframe =", iframe);
-
-  if (!iframe) return res.status(400).send("Missing iframe");
-
-  const direct = await resolveOkRuToDirect(iframe, UA);
-  console.log("Resolved direct m3u8 =", direct);
-
-  if (!direct) return res.status(404).send("Could not resolve OK stream");
-
-  try {
-    const response = await axios({
-      method: "GET",
-      url: direct,
-      responseType: "stream",
-      headers: {
-        "User-Agent": UA,
-        Referer: "https://ok.ru/"
-      },
-      timeout: 20000
-    });
-
-    const contentType = response.headers["content-type"] || "";
-    console.log("Direct m3u8 content-type:", contentType);
-
-    let playlist = "";
-
-    response.data.on("data", (chunk) => {
-      playlist += chunk.toString();
-    });
-
-    response.data.on("end", () => {
-      console.log("Playlist size:", playlist.length);
-
-      const base = new URL(direct);
-
-      playlist = playlist.replace(/^(?!#)(.+)$/gm, (line) => {
-        if (!line.trim()) return line;
-        try {
-          const absoluteUrl = new URL(line, base).href;
-          return `${BASE_URL}/proxy?url=${encodeURIComponent(absoluteUrl)}`;
-        } catch {
-          return line;
-        }
-      });
-
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-      res.send(playlist);
-    });
-
-  } catch (err) {
-    console.error("OK direct proxy error:", err.message);
-    res.status(500).send("Proxy failed");
-  }
-});
-
-/* ---------- PROXY ROUTE ---------- */
-app.get("/proxy", async (req, res) => {
-  setCors(res);
-
-  const targetUrl = req.query.url;
-  console.log("Proxy route hit:", targetUrl);
-
-  if (!targetUrl) return res.status(400).send("Missing url");
-
-  try {
-    const response = await axios({
-      method: "GET",
-      url: targetUrl,
-      responseType: "stream",
-      headers: {
-        "User-Agent": UA,
-        Referer: "https://ok.ru/"
-      },
-      timeout: 20000
-    });
-
-    const contentType = response.headers["content-type"] || "";
-    console.log("Proxy content-type:", contentType);
-
-    res.setHeader("Content-Type", contentType);
-    response.data.pipe(res);
-
-  } catch (err) {
-    console.error("Proxy error:", err.message);
-    res.status(500).send("Proxy failed");
-  }
-});
-
-/* ---------- START ---------- */
 const port = process.env.PORT || 7000;
-
-const addonInterface = builder.getInterface();
-
-// Attach addon handler manually
-app.use((req, res) => {
-  addonInterface(req, res);
-});
-
-app.listen(port, () => {
-  console.log("Server listening on", port);
-});
+serveHTTP(builder.getInterface(), { port });
