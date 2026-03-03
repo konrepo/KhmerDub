@@ -389,7 +389,9 @@ builder.defineStreamHandler(async ({ type, id }) => {
 const app = express();
 
 // Health
-app.get("/", (req, res) => res.send("KhmerDub (addon+proxy) running"));
+app.get("/", (req, res) =>
+  res.send("KhmerDub (addon+proxy) running")
+);
 
 // Preflight for iOS WebKit
 app.options(["/proxy", "/ok"], (req, res) => {
@@ -405,11 +407,6 @@ function setCors(res) {
   res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
 }
 
-/**
- * /ok?iframe=<ok.ru iframe url>
- * - resolves OK iframe into direct m3u8 on THIS server (same IP)
- * - then redirects to /proxy?url=<direct>
- */
 app.get("/ok", async (req, res) => {
   setCors(res);
 
@@ -419,15 +416,9 @@ app.get("/ok", async (req, res) => {
   const direct = await resolveOkRuToDirect(iframe, UA);
   if (!direct) return res.status(404).send("Could not resolve OK stream");
 
-  // Redirect client to proxy endpoint (still same server)
   return res.redirect(`${BASE_URL}/proxy?url=${encodeURIComponent(direct)}`);
 });
 
-/**
- * /proxy?url=<m3u8 or segment url>
- * - streams media
- * - rewrites m3u8 lines to go back through /proxy
- */
 app.get("/proxy", async (req, res) => {
   setCors(res);
 
@@ -448,8 +439,10 @@ app.get("/proxy", async (req, res) => {
 
     const contentType = response.headers["content-type"] || "";
 
-    // Playlist rewrite
-    if (contentType.includes("application/vnd.apple.mpegurl") || targetUrl.includes(".m3u8")) {
+    if (
+      contentType.includes("application/vnd.apple.mpegurl") ||
+      targetUrl.includes(".m3u8")
+    ) {
       let playlist = "";
 
       response.data.on("data", (chunk) => {
@@ -457,31 +450,28 @@ app.get("/proxy", async (req, res) => {
       });
 
       response.data.on("end", () => {
-        try {
-          const base = new URL(targetUrl);
+        const base = new URL(targetUrl);
 
-          playlist = playlist.replace(/^(?!#)(.+)$/gm, (line) => {
-            if (!line.trim()) return line;
-            try {
-              const absoluteUrl = new URL(line, base).href;
-              return `${BASE_URL}/proxy?url=${encodeURIComponent(absoluteUrl)}`;
-            } catch {
-              return line;
-            }
-          });
+        playlist = playlist.replace(/^(?!#)(.+)$/gm, (line) => {
+          if (!line.trim()) return line;
+          try {
+            const absoluteUrl = new URL(line, base).href;
+            return `${BASE_URL}/proxy?url=${encodeURIComponent(absoluteUrl)}`;
+          } catch {
+            return line;
+          }
+        });
 
-          res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-          res.send(playlist);
-        } catch (e) {
-          console.error("Playlist rewrite error:", e.message);
-          res.status(500).send("Playlist rewrite failed");
-        }
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.apple.mpegurl"
+        );
+        res.send(playlist);
       });
 
       return;
     }
 
-    // Segments
     res.setHeader("Content-Type", contentType);
     response.data.pipe(res);
   } catch (err) {
@@ -491,16 +481,11 @@ app.get("/proxy", async (req, res) => {
 });
 
 /* ===============================
-   MOUNT STREMIO ADDON ROUTES
-================================= */
-const addonInterface = builder.getInterface();
-
-app.use((req, res) => {
-  addonInterface(req, res);
-});
-
-/* ===============================
-   START
+   ATTACH STREMIO ADDON TO SAME SERVER
 ================================= */
 const port = process.env.PORT || 7000;
-app.listen(port, () => console.log("Server listening on", port));
+
+serveHTTP(builder.getInterface(), {
+  port,
+  server: app
+});
