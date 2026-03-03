@@ -388,12 +388,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 ================================= */
 const app = express();
 
-// Health
-app.get("/", (req, res) =>
-  res.send("KhmerDub (addon+proxy) running")
-);
-
-// Preflight for iOS WebKit
+// Preflight
 app.options(["/proxy", "/ok"], (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "*");
@@ -407,13 +402,18 @@ function setCors(res) {
   res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS");
 }
 
+/* ---------- OK ROUTE (ONLY ONE) ---------- */
 app.get("/ok", async (req, res) => {
   setCors(res);
 
   const iframe = req.query.iframe;
+  console.log("OK route hit. iframe =", iframe);
+
   if (!iframe) return res.status(400).send("Missing iframe");
 
   const direct = await resolveOkRuToDirect(iframe, UA);
+  console.log("Resolved direct m3u8 =", direct);
+
   if (!direct) return res.status(404).send("Could not resolve OK stream");
 
   try {
@@ -429,52 +429,46 @@ app.get("/ok", async (req, res) => {
     });
 
     const contentType = response.headers["content-type"] || "";
+    console.log("Direct m3u8 content-type:", contentType);
 
-    if (
-      contentType.includes("application/vnd.apple.mpegurl") ||
-      direct.includes(".m3u8")
-    ) {
-      let playlist = "";
+    let playlist = "";
 
-      response.data.on("data", (chunk) => {
-        playlist += chunk.toString();
+    response.data.on("data", (chunk) => {
+      playlist += chunk.toString();
+    });
+
+    response.data.on("end", () => {
+      console.log("Playlist size:", playlist.length);
+
+      const base = new URL(direct);
+
+      playlist = playlist.replace(/^(?!#)(.+)$/gm, (line) => {
+        if (!line.trim()) return line;
+        try {
+          const absoluteUrl = new URL(line, base).href;
+          return `${BASE_URL}/proxy?url=${encodeURIComponent(absoluteUrl)}`;
+        } catch {
+          return line;
+        }
       });
 
-      response.data.on("end", () => {
-        const base = new URL(direct);
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      res.send(playlist);
+    });
 
-        playlist = playlist.replace(/^(?!#)(.+)$/gm, (line) => {
-          if (!line.trim()) return line;
-          try {
-            const absoluteUrl = new URL(line, base).href;
-            return `${BASE_URL}/proxy?url=${encodeURIComponent(absoluteUrl)}`;
-          } catch {
-            return line;
-          }
-        });
-
-        res.setHeader(
-          "Content-Type",
-          "application/vnd.apple.mpegurl"
-        );
-        res.send(playlist);
-      });
-
-      return;
-    }
-
-    res.setHeader("Content-Type", contentType);
-    response.data.pipe(res);
   } catch (err) {
     console.error("OK direct proxy error:", err.message);
     res.status(500).send("Proxy failed");
   }
 });
 
+/* ---------- PROXY ROUTE ---------- */
 app.get("/proxy", async (req, res) => {
   setCors(res);
 
   const targetUrl = req.query.url;
+  console.log("Proxy route hit:", targetUrl);
+
   if (!targetUrl) return res.status(400).send("Missing url");
 
   try {
@@ -490,51 +484,18 @@ app.get("/proxy", async (req, res) => {
     });
 
     const contentType = response.headers["content-type"] || "";
-
-    if (
-      contentType.includes("application/vnd.apple.mpegurl") ||
-      targetUrl.includes(".m3u8")
-    ) {
-      let playlist = "";
-
-      response.data.on("data", (chunk) => {
-        playlist += chunk.toString();
-      });
-
-      response.data.on("end", () => {
-        const base = new URL(targetUrl);
-
-        playlist = playlist.replace(/^(?!#)(.+)$/gm, (line) => {
-          if (!line.trim()) return line;
-          try {
-            const absoluteUrl = new URL(line, base).href;
-            return `${BASE_URL}/proxy?url=${encodeURIComponent(absoluteUrl)}`;
-          } catch {
-            return line;
-          }
-        });
-
-        res.setHeader(
-          "Content-Type",
-          "application/vnd.apple.mpegurl"
-        );
-        res.send(playlist);
-      });
-
-      return;
-    }
+    console.log("Proxy content-type:", contentType);
 
     res.setHeader("Content-Type", contentType);
     response.data.pipe(res);
+
   } catch (err) {
     console.error("Proxy error:", err.message);
     res.status(500).send("Proxy failed");
   }
 });
 
-/* ===============================
-   ATTACH STREMIO ADDON TO SAME SERVER
-================================= */
+/* ---------- START ---------- */
 const port = process.env.PORT || 7000;
 
 serveHTTP(builder.getInterface(), {
