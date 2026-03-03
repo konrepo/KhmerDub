@@ -531,71 +531,88 @@ builder.defineStreamHandler(async ({ type, id }) => {
 });
 
 
-const express = require("express");
-const app = express();
+const http = require("http");
+const url = require("url");
 
-// Proxy route FIRST
-app.get("/proxy", async (req, res) => {
-  console.log("==== PROXY REQUEST ====");
-  console.log("Incoming:", req.method, req.originalUrl);
+const addonInterface = builder.getInterface();
 
-  const target = req.query.url;
-  console.log("Target URL:", target);
+// Start addon server
+const addonServer = serveHTTP(addonInterface);
 
-  if (!target) {
-    console.log("Missing target URL");
-    return res.status(400).send("Missing url");
-  }
+// Get actual Node server instance
+const realServer = addonServer.server || addonServer;
 
-  try {
-    const isPlaylist = target.includes(".m3u8");
-    console.log("Is playlist:", isPlaylist);
+// Save original handler
+const originalHandler = realServer.listeners("request")[0];
 
-    const response = await axios.get(target, {
-      headers: {
-        Referer: "https://ok.ru/",
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-      },
-      responseType: isPlaylist ? "text" : "stream"
-    });
+// Remove default handler
+realServer.removeAllListeners("request");
 
-    console.log("Fetched OK.ru response OK");
+// Add wrapped handler
+realServer.on("request", async (req, res) => {
+  console.log("=== Incoming ===", req.method, req.url);
 
-    if (isPlaylist) {
-      let body = response.data;
+  const parsed = url.parse(req.url, true);
 
-      const base = target.substring(0, target.lastIndexOf("/") + 1);
+  // ===== PROXY =====
+  if (parsed.pathname === "/proxy") {
+    console.log(">>> PROXY HIT:", parsed.query);
 
-      body = body.replace(
-        /^([^#\r\n][^\r\n]*)/gm,
-        (line) => {
-          if (line.startsWith("http")) {
-            return `/proxy?url=${encodeURIComponent(line)}`;
-          }
-          if (!line.startsWith("#")) {
-            return `/proxy?url=${encodeURIComponent(base + line)}`;
-          }
-          return line;
-        }
-      );
-
-      console.log("Playlist rewritten and returned");
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-      return res.send(body);
+    const target = parsed.query.url;
+    if (!target) {
+      console.log("!!! Missing target");
+      res.statusCode = 400;
+      return res.end("Missing url");
     }
 
-    console.log("Streaming segment...");
-    response.data.pipe(res);
+    try {
+      const isPlaylist = target.includes(".m3u8");
+      console.log("Is playlist:", isPlaylist);
 
-  } catch (err) {
-    console.error("Proxy error:", err.message);
-    res.status(500).send("Proxy failed");
+      const response = await axios.get(target, {
+        headers: {
+          Referer: "https://ok.ru/",
+          "User-Agent":
+            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+        },
+        responseType: isPlaylist ? "text" : "stream"
+      });
+
+      console.log("Fetched OK.ru OK");
+
+      if (isPlaylist) {
+        let body = response.data;
+        const base = target.substring(0, target.lastIndexOf("/") + 1);
+
+        body = body.replace(
+          /^([^#\r\n][^\r\n]*)/gm,
+          (line) => {
+            if (line.startsWith("http")) {
+              return `/proxy?url=${encodeURIComponent(line)}`;
+            }
+            if (!line.startsWith("#")) {
+              return `/proxy?url=${encodeURIComponent(base + line)}`;
+            }
+            return line;
+          }
+        );
+
+        console.log("Playlist rewritten");
+        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+        return res.end(body);
+      }
+
+      console.log("Streaming segment");
+      response.data.pipe(res);
+      return;
+
+    } catch (err) {
+      console.error("Proxy error:", err.message);
+      res.statusCode = 500;
+      return res.end("Proxy failed");
+    }
   }
-});
 
-// Mount Stremio addon AFTER proxy
-serveHTTP(builder.getInterface(), {
-  port: process.env.PORT || 7000,
-  app: app
+  console.log("Passing to addon handler");
+  originalHandler(req, res);
 });
