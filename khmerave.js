@@ -534,20 +534,21 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
-const express = require("express");
-const app = express();
+const http = require("http");
+const url = require("url");
 
-(async () => {
-  const middleware = await serveHTTP(builder.getInterface());
-  app.use("/", middleware);
+const addonInterface = builder.getInterface();
+const addonServer = serveHTTP(addonInterface);
+
+const server = http.createServer(async (req, res) => {
+  const parsed = url.parse(req.url, true);
 
   // ===== PROXY ROUTE =====
-  app.get("/proxy", async (req, res) => {
-    const target = req.query.url;
-    if (!target) return res.status(400).send("Missing url");
-
-    if (target.startsWith(`${req.protocol}://${req.get("host")}/proxy`)) {
-      return res.redirect(target);
+  if (parsed.pathname === "/proxy") {
+    const target = parsed.query.url;
+    if (!target) {
+      res.statusCode = 400;
+      return res.end("Missing url");
     }
 
     try {
@@ -568,22 +569,26 @@ const app = express();
         body = body.replace(
           /^(https?:\/\/[^\s#]+)/gm,
           (match) =>
-            `${req.protocol}://${req.get("host")}/proxy?url=${encodeURIComponent(match)}`
+            `/proxy?url=${encodeURIComponent(match)}`
         );
 
         res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-        return res.send(body);
+        return res.end(body);
       }
 
       response.data.pipe(res);
+      return;
 
     } catch (err) {
-      console.error("Proxy error:", err.message);
-      res.status(500).send("Proxy failed");
+      res.statusCode = 500;
+      return res.end("Proxy failed");
     }
-  });
+  }
 
-  app.listen(process.env.PORT || 7000, () => {
-    console.log("KhmerDub addon running...");
-  });
-})();
+  // Otherwise pass to Stremio addon
+  addonServer(req, res);
+});
+
+server.listen(process.env.PORT || 7000, () => {
+  console.log("KhmerDub addon running...");
+});
