@@ -3,19 +3,14 @@ const express = require("express");
 const axios = require("axios");
 const cheerio = require("cheerio");
 
-/* ===============================
-   CONFIG
-================================= */
+// CONFIG
 const UA =
   "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
 
-// IMPORTANT: set on Render as env var BASE_URL=https://<your-addon-service>.onrender.com
-const BASE_URL = "https://khmerdub.onrender.com";
-  process.env.BASE_URL || `http://localhost:${process.env.PORT || 7000}`;
+const BASE_URL =
+  process.env.BASE_URL || "https://khmerdub.onrender.com";
 
-/* ===============================
-   MANIFEST + BUILDER
-================================= */
+// MANIFEST & BUILDER
 const manifest = {
   id: "community.khmerdub.world",
   version: "3.0.2",
@@ -53,9 +48,7 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-/* ===============================
-   HELPERS (your existing ones)
-================================= */
+// HELPERS 
 function normalizeOkUrl(url) {
   if (!url) return url;
   if (url.startsWith("//")) return "https:" + url;
@@ -89,9 +82,7 @@ function tryExtractVideoCandidateFromKhmerAvenue(html) {
   return null;
 }
 
-/**
- * Extract m3u8 from OK iframe HTML (same logic you had)
- */
+// Extract m3u8 from OK iframe HTML
 async function resolveOkRuToDirect(iframeUrl, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
@@ -133,9 +124,7 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
   }
 }
 
-/* ===============================
-   CATALOG HANDLER (same as yours)
-================================= */
+// CATALOG HANDLER
 builder.defineCatalogHandler(async (args) => {
   const { id, extra } = args;
   if (id !== "khmerave" && id !== "merlkon") return { metas: [] };
@@ -262,9 +251,7 @@ builder.defineCatalogHandler(async (args) => {
   }
 });
 
-/* ===============================
-   META HANDLER (same as yours)
-================================= */
+// META HANDLER
 builder.defineMetaHandler(async ({ type, id }) => {
   if (type !== "series") return { meta: null };
 
@@ -328,7 +315,7 @@ builder.defineMetaHandler(async ({ type, id }) => {
 });
 
 /* ===============================
-   STREAM HANDLER (CHANGED)
+   STREAM HANDLER
    - If ok.ru iframe found → return /ok?iframe=...
    - If direct .m3u8/mp4 candidate → return /proxy?url=...
 ================================= */
@@ -506,7 +493,7 @@ app.get("/proxy", async (req, res) => {
 /* ===============================
    MOUNT STREMIO ADDON ROUTES
 ================================= */
-app.use("/", builder.getInterface());
+app.use("/", serveHTTP(builder.getInterface()));
 
 /* ===============================
    START
