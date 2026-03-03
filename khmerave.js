@@ -1,4 +1,4 @@
-const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
+const { addonBuilder } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "community.khmerdub.world",
@@ -397,7 +397,6 @@ async function handleEpisodeOne(url, UA) {
 
     if (!direct) return { streams: [] };
 
-    // Extract show name from URL
     const showName = url
       .split("/")
       .filter(Boolean)
@@ -411,88 +410,99 @@ async function handleEpisodeOne(url, UA) {
       streams: [
         {
           title: formattedTitle,
-          url: direct,
-          season: 1,
-          episode: 1,
-          behaviorHints: {
-            notWebReady: true
-          }
+          url: direct
         }
       ]
     };
 
-  } catch {
+  } catch (err) {
+    console.error("EP1 error:", err.message);
     return { streams: [] };
   }
 }
 
-
 builder.defineStreamHandler(async ({ type, id }) => {
   if (type !== "series") return { streams: [] };
-  
+
+  const BASE_URL =
+    process.env.RENDER_EXTERNAL_URL ||
+    "https://khmerdub-test.onrender.com";
+
   const realUrl = Buffer.from(id, "base64")
     .toString("utf8")
     .replace("#ep1", "");
-  
+
   const UA =
     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
 
   // Detect EP1 (album page)
   if (realUrl.includes("/album/")) {
-    return await handleEpisodeOne(realUrl, UA);
+    const result = await handleEpisodeOne(realUrl, UA);
+
+    if (result?.streams?.length) {
+      const original = result.streams[0].url;
+
+      // Proxy ONLY okcdn / ok.ru streams
+      if (original.includes("okcdn.ru") || original.includes("ok.ru")) {
+        result.streams[0].url =
+          `${BASE_URL}/proxy?url=${encodeURIComponent(original)}`;
+      }
+
+      result.streams[0].behaviorHints = { notWebReady: true };
+      delete result.streams[0].season;
+      delete result.streams[0].episode;
+    }
+
+    return result;
   }
 
   try {
-    // Fetch episode page
     const epRes = await axios.get(realUrl, {
       headers: {
         "User-Agent": UA,
         "Referer": realUrl.includes("khmerdrama.com")
-			? "https://www.khmerdrama.com/"
-			: "https://www.khmeravenue.com/"
+          ? "https://www.khmerdrama.com/"
+          : "https://www.khmeravenue.com/"
       },
       timeout: 15000
     });
 
     const html = epRes.data;
-
-    // Extract candidate link
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
 
     if (!candidate) return { streams: [] };
 
     const cand = normalizeOkUrl(candidate);
 
-    // OK.ru resolver
+    // ===== OK.RU HANDLING =====
     if (cand.includes("ok.ru")) {
       const direct = await resolveOkRuToDirect(cand, axios, UA);
-	  console.log("Direct stream:", direct);  //remove log later
-
       if (!direct) return { streams: [] };
-	  
-	  // Extract show name from URL	  
-	  const showName = realUrl
+
+      const showName = realUrl
         .split("/")
         .filter(Boolean)
         .slice(-1)[0]
-        .replace(/-\d+$/, "") // remove episode number
+        .replace(/-\d+$/, "")
         .replace(/-/g, " ")
         .replace(/\b\w/g, c => c.toUpperCase());
-	  
-	  const epNumber = parseInt(
+
+      const epNumber = parseInt(
         realUrl.match(/-(\d+)\//)?.[1] || "1",
         10
-	  );
+      );
 
-	  const formattedTitle = `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
+      const formattedTitle =
+        `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
+
+      const proxyUrl =
+        `${BASE_URL}/proxy?url=${encodeURIComponent(direct)}`;
 
       return {
         streams: [
           {
             title: formattedTitle,
-            url: direct,
-			season: 1,
-			episode: epNumber,
+            url: proxyUrl,
             behaviorHints: {
               notWebReady: true
             }
@@ -501,7 +511,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       };
     }
 
-    // If candidate is already a direct media URL (.m3u8 or .mp4), return as-is
+    // ===== DIRECT HLS / MP4 =====
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
       return {
         streams: [
@@ -510,7 +520,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
             url: cand,
             behaviorHints: {
               notWebReady: true
-			}
+            }
           }
         ]
       };
@@ -524,5 +534,57 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
-const port = process.env.PORT || 7000;
-serveHTTP(builder.getInterface(), { port });
+const express = require("express");
+const app = express();
+
+const addonInterface = builder.getInterface();
+app.use("/", addonInterface);
+
+// ===== PROXY ROUTE =====
+app.get("/proxy", async (req, res) => {
+  const target = req.query.url;
+  if (!target) return res.status(400).send("Missing url");
+
+  // Prevent double-proxy loop
+  if (target.startsWith(`${req.protocol}://${req.get("host")}/proxy`)) {
+    return res.redirect(target);
+  }
+
+  try {
+    const isPlaylist = target.includes(".m3u8");
+
+    const response = await axios.get(target, {
+      headers: {
+        Referer: "https://ok.ru/",
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+      },
+      responseType: isPlaylist ? "text" : "stream"
+    });
+
+    // ===== PLAYLIST =====
+    if (isPlaylist) {
+      let body = response.data;
+
+      body = body.replace(
+        /^(https?:\/\/[^\s#]+)/gm,
+        (match) =>
+          `${req.protocol}://${req.get("host")}/proxy?url=${encodeURIComponent(match)}`
+      );
+
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      return res.send(body);
+    }
+
+    // ===== SEGMENTS (TS/AAC/etc) =====
+    response.data.pipe(res);
+
+  } catch (err) {
+    console.error("Proxy error:", err.message);
+    res.status(500).send("Proxy failed");
+  }
+});
+
+app.listen(process.env.PORT || 7000, () => {
+  console.log("KhmerDub addon running...");
+});
