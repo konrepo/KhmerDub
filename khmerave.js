@@ -535,73 +535,71 @@ builder.defineStreamHandler(async ({ type, id }) => {
 });
 
 
-const server = http.createServer(async (req, res) => {
-  console.log("Incoming request:", req.method, req.url);
+const express = require("express");
+const app = express();
 
-  const parsed = url.parse(req.url, true);
+// Proxy route FIRST
+app.get("/proxy", async (req, res) => {
+  console.log("==== PROXY REQUEST ====");
+  console.log("Incoming:", req.method, req.originalUrl);
 
-  // ===== PROXY ROUTE =====
-  if (parsed.pathname === "/proxy") {
-    console.log("Proxy route hit");
+  const target = req.query.url;
+  console.log("Target URL:", target);
 
-    const target = parsed.query.url;
-    console.log("Proxy target:", target);
-
-    if (!target) {
-      res.statusCode = 400;
-      return res.end("Missing url");
-    }
-
-    try {
-      const isPlaylist = target.includes(".m3u8");
-      console.log("Is playlist:", isPlaylist);
-
-      const response = await axios.get(target, {
-        headers: {
-          Referer: "https://ok.ru/",
-          "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-        },
-        responseType: isPlaylist ? "text" : "stream"
-      });
-
-      console.log("Fetched from OK.ru successfully");
-
-      if (isPlaylist) {
-        let body = response.data;
-
-        const base = target.substring(0, target.lastIndexOf("/") + 1);
-
-        body = body.replace(
-          /^([^#\r\n][^\r\n]*)/gm,
-          (line) => {
-            if (line.startsWith("http")) {
-              return `/proxy?url=${encodeURIComponent(line)}`;
-            }
-            if (!line.startsWith("#")) {
-              return `/proxy?url=${encodeURIComponent(base + line)}`;
-            }
-            return line;
-          }
-        );
-
-        console.log("Playlist rewritten");
-
-        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-        return res.end(body);
-      }
-
-      console.log("Streaming segment...");
-      response.data.pipe(res);
-      return;
-
-    } catch (err) {
-      console.error("Proxy error:", err.message);
-      res.statusCode = 500;
-      return res.end("Proxy failed");
-    }
+  if (!target) {
+    console.log("Missing target URL");
+    return res.status(400).send("Missing url");
   }
 
-  // Otherwise pass to Stremio addon
-  addonServer(req, res);
+  try {
+    const isPlaylist = target.includes(".m3u8");
+    console.log("Is playlist:", isPlaylist);
+
+    const response = await axios.get(target, {
+      headers: {
+        Referer: "https://ok.ru/",
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+      },
+      responseType: isPlaylist ? "text" : "stream"
+    });
+
+    console.log("Fetched OK.ru response OK");
+
+    if (isPlaylist) {
+      let body = response.data;
+
+      const base = target.substring(0, target.lastIndexOf("/") + 1);
+
+      body = body.replace(
+        /^([^#\r\n][^\r\n]*)/gm,
+        (line) => {
+          if (line.startsWith("http")) {
+            return `/proxy?url=${encodeURIComponent(line)}`;
+          }
+          if (!line.startsWith("#")) {
+            return `/proxy?url=${encodeURIComponent(base + line)}`;
+          }
+          return line;
+        }
+      );
+
+      console.log("Playlist rewritten and returned");
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      return res.send(body);
+    }
+
+    console.log("Streaming segment...");
+    response.data.pipe(res);
+
+  } catch (err) {
+    console.error("Proxy error:", err.message);
+    res.status(500).send("Proxy failed");
+  }
+});
+
+// Mount Stremio addon AFTER proxy
+serveHTTP(builder.getInterface(), {
+  port: process.env.PORT || 7000,
+  app: app
 });
