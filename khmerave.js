@@ -537,13 +537,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 const express = require("express");
 const app = express();
 
-const addonInterface = builder.getInterface();
-
-app.get("/manifest.json", addonInterface);
-app.get("/catalog/:type/:id.json", addonInterface);
-app.get("/catalog/:type/:id/:extra.json", addonInterface);
-app.get("/meta/:type/:id.json", addonInterface);
-app.get("/stream/:type/:id.json", addonInterface);
+app.use("/", serveHTTP(builder.getInterface()));
 
 // ===== PROXY ROUTE =====
 app.get("/proxy", async (req, res) => {
