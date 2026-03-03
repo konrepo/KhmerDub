@@ -229,33 +229,42 @@ builder.defineMetaHandler(async ({ type, id }) => {
                 const link = $(el).attr("href");
                 if (!link) return;
 
-				let text = $(el).text().trim();
-				text = text.replace(/\s+/g, " ");
-				
-				// Exclude ONLY exact "Episode 0" or "Episode 1"
-				if (/^Episode\s+0$/i.test(text)) return;
-				if (/^Episode\s+1$/i.test(text)) return;
-				
-				 episodes.push(link);
+                // Exclude random post_type video (bad Episode 1)
+                if (link.includes("?post_type=videos")) return;
+
+                let epNumber = 1;
+
+                // Album page = Episode 1
+                if (!link.includes("/album/")) {
+                    const match = link.match(/-(\d+)/);
+                    if (match) {
+                        epNumber = parseInt(match[1], 10);
+                    }
+                }
+
+                episodes.push({ link, epNumber });
             });
 
         if (episodes.length) {
-            episodes = [...new Set(episodes)];
-            episodes = episodes.reverse();
+            // Remove duplicates
+            episodes = [...new Map(episodes.map(e => [e.link, e])).values()];
+
+            // Sort by episode number
+            episodes.sort((a, b) => a.epNumber - b.epNumber);
         }
 
-        const videos = episodes.map((link, index) => {
-			const isAlbum = link.includes("/album/");
-			const episodeUrl = isAlbum ? link + "#ep1" : link;
-			
-			return {				
-				id: Buffer.from(episodeUrl).toString("base64"),
-				season: 1,
-				episode: index + 1,
-				title: `Episode ${String(index + 1).padStart(2, "0")}`,
-				thumbnail: poster
-			};
-		});
+        const videos = episodes.map((item) => {
+            const isAlbum = item.link.includes("/album/");
+            const episodeUrl = isAlbum ? item.link + "#ep1" : item.link;
+
+            return {
+                id: Buffer.from(episodeUrl).toString("base64"),
+                season: 1,
+                episode: item.epNumber,
+                title: `Episode ${String(item.epNumber).padStart(2, "0")}`,
+                thumbnail: poster
+            };
+        });
 
         return {
             meta: {
@@ -397,6 +406,7 @@ async function handleEpisodeOne(url, UA) {
 
     if (!direct) return { streams: [] };
 
+    // Extract show name from URL
     const showName = url
       .split("/")
       .filter(Boolean)
@@ -410,113 +420,111 @@ async function handleEpisodeOne(url, UA) {
       streams: [
         {
           title: formattedTitle,
-          url: direct
+          url: direct,
+          behaviorHints: {
+            notWebReady: true,
+            proxyHeaders: {
+              request: {
+                Referer: "https://ok.ru/",
+                "User-Agent": UA
+              }
+            }
+          }
         }
       ]
     };
 
-  } catch (err) {
-    console.error("EP1 error:", err.message);
+  } catch {
     return { streams: [] };
   }
 }
 
+
 builder.defineStreamHandler(async ({ type, id }) => {
   if (type !== "series") return { streams: [] };
-
+  
   const realUrl = Buffer.from(id, "base64")
     .toString("utf8")
     .replace("#ep1", "");
-
+  
   const UA =
     "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
 
   // Detect EP1 (album page)
   if (realUrl.includes("/album/")) {
-    const result = await handleEpisodeOne(realUrl, UA);
-
-    if (result?.streams?.length) {
-      const original = result.streams[0].url;
-
-      // Proxy ONLY okcdn / ok.ru streams
-      if (original.includes("okcdn.ru") || original.includes("ok.ru")) {
-        result.streams[0].url =
-          `/proxy?url=${encodeURIComponent(original)}`;
-      }
-
-      result.streams[0].behaviorHints = { notWebReady: true };
-      delete result.streams[0].season;
-      delete result.streams[0].episode;
-    }
-
-    return result;
+    return await handleEpisodeOne(realUrl, UA);
   }
 
   try {
+    // Fetch episode page
     const epRes = await axios.get(realUrl, {
       headers: {
         "User-Agent": UA,
         "Referer": realUrl.includes("khmerdrama.com")
-          ? "https://www.khmerdrama.com/"
-          : "https://www.khmeravenue.com/"
+			? "https://www.khmerdrama.com/"
+			: "https://www.khmeravenue.com/"
       },
       timeout: 15000
     });
 
     const html = epRes.data;
+
+    // Extract candidate link
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
 
     if (!candidate) return { streams: [] };
 
     const cand = normalizeOkUrl(candidate);
 
-    // ===== OK.RU HANDLING =====
+    // OK.ru resolver
     if (cand.includes("ok.ru")) {
       const direct = await resolveOkRuToDirect(cand, axios, UA);
-      if (!direct) return { streams: [] };
+	  console.log("Direct stream:", direct);  //remove log later
 
-      const showName = realUrl
+      if (!direct) return { streams: [] };
+	  
+	  // Extract show name from URL	  
+	  const showName = realUrl
         .split("/")
         .filter(Boolean)
         .slice(-1)[0]
-        .replace(/-\d+$/, "")
+        .replace(/-\d+$/, "") // remove episode number
         .replace(/-/g, " ")
         .replace(/\b\w/g, c => c.toUpperCase());
-
-      const epNumber = parseInt(
+	  
+	  const epNumber = parseInt(
         realUrl.match(/-(\d+)\//)?.[1] || "1",
         10
-      );
+	  );
 
-      const formattedTitle =
-        `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
-
-      const proxyUrl =
-        `/proxy?url=${encodeURIComponent(direct)}`;
+	  const formattedTitle = `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
 
       return {
         streams: [
           {
             title: formattedTitle,
-            url: proxyUrl,
+            url: direct,
             behaviorHints: {
-              notWebReady: true
+              notWebReady: true,
+              proxyHeaders: {
+                request: {
+                  Referer: "https://ok.ru/",
+                  "User-Agent": UA
+                }
+              }
             }
           }
         ]
       };
     }
 
-    // ===== DIRECT HLS / MP4 =====
+    // If candidate is already a direct media URL (.m3u8 or .mp4), return as-is
     if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
       return {
         streams: [
           {
             title: "KhmerDub",
-            url: cand,
-            behaviorHints: {
-              notWebReady: true
-            }
+            url: cand
           }
         ]
       };
@@ -530,60 +538,5 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
-
-const express = require("express");
-const app = express();
-
-// Proxy route FIRST
-app.get("/proxy", async (req, res) => {
-  console.log("Proxy hit:", req.url);
-
-  const target = req.query.url;
-  if (!target) return res.status(400).send("Missing url");
-
-  try {
-    const isPlaylist = target.includes(".m3u8");
-
-    const response = await axios.get(target, {
-      headers: {
-        Referer: "https://ok.ru/",
-        "User-Agent":
-          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-      },
-      responseType: isPlaylist ? "text" : "stream"
-    });
-
-    if (isPlaylist) {
-      let body = response.data;
-      const base = target.substring(0, target.lastIndexOf("/") + 1);
-
-      body = body.replace(
-        /^([^#\r\n][^\r\n]*)/gm,
-        (line) => {
-          if (line.startsWith("http")) {
-            return `/proxy?url=${encodeURIComponent(line)}`;
-          }
-          if (!line.startsWith("#")) {
-            return `/proxy?url=${encodeURIComponent(base + line)}`;
-          }
-          return line;
-        }
-      );
-
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-      return res.send(body);
-    }
-
-    response.data.pipe(res);
-
-  } catch (err) {
-    console.error("Proxy error:", err.message);
-    res.status(500).send("Proxy failed");
-  }
-});
-
-// IMPORTANT: Let SDK attach itself to this app
-serveHTTP(builder.getInterface(), {
-  port: process.env.PORT || 7000,
-  app
-});
+const port = process.env.PORT || 7000;
+serveHTTP(builder.getInterface(), { port });
