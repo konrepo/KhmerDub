@@ -534,61 +534,50 @@ builder.defineStreamHandler(async ({ type, id }) => {
   }
 });
 
-const http = require("http");
-const url = require("url");
 
-const addonInterface = builder.getInterface();
-const addonServer = serveHTTP(addonInterface);
+const express = require("express");
+const app = express();
 
-const server = http.createServer(async (req, res) => {
-  const parsed = url.parse(req.url, true);
+// Proxy route FIRST
+app.get("/proxy", async (req, res) => {
+  const target = req.query.url;
+  if (!target) return res.status(400).send("Missing url");
 
-  // ===== PROXY ROUTE =====
-  if (parsed.pathname === "/proxy") {
-    const target = parsed.query.url;
-    if (!target) {
-      res.statusCode = 400;
-      return res.end("Missing url");
+  try {
+    const isPlaylist = target.includes(".m3u8");
+
+    const response = await axios.get(target, {
+      headers: {
+        Referer: "https://ok.ru/",
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+      },
+      responseType: isPlaylist ? "text" : "stream"
+    });
+
+    if (isPlaylist) {
+      let body = response.data;
+
+      body = body.replace(
+        /^(https?:\/\/[^\s#]+)/gm,
+        (match) =>
+          `/proxy?url=${encodeURIComponent(match)}`
+      );
+
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      return res.send(body);
     }
 
-    try {
-      const isPlaylist = target.includes(".m3u8");
+    response.data.pipe(res);
 
-      const response = await axios.get(target, {
-        headers: {
-          Referer: "https://ok.ru/",
-          "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-        },
-        responseType: isPlaylist ? "text" : "stream"
-      });
-
-      if (isPlaylist) {
-        let body = response.data;
-
-        body = body.replace(
-          /^(https?:\/\/[^\s#]+)/gm,
-          (match) =>
-            `/proxy?url=${encodeURIComponent(match)}`
-        );
-
-        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-        return res.end(body);
-      }
-
-      response.data.pipe(res);
-      return;
-
-    } catch (err) {
-      res.statusCode = 500;
-      return res.end("Proxy failed");
-    }
+  } catch (err) {
+    console.error("Proxy error:", err.message);
+    res.status(500).send("Proxy failed");
   }
-
-  // Otherwise pass to Stremio addon
-  addonServer(req, res);
 });
 
-server.listen(process.env.PORT || 7000, () => {
-  console.log("KhmerDub addon running...");
+// Mount Stremio addon AFTER proxy
+serveHTTP(builder.getInterface(), {
+  port: process.env.PORT || 7000,
+  app: app
 });
