@@ -590,5 +590,3 @@ app.get("/proxy", async (req, res) => {
 app.listen(process.env.PORT || 7000, () => {
   console.log("KhmerDub addon running...");
 });
-  console.log("KhmerDub addon running...");
-});
