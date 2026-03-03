@@ -415,12 +415,7 @@ async function handleEpisodeOne(url, UA) {
           season: 1,
           episode: 1,
           behaviorHints: {
-            proxyHeaders: {
-              request: {
-                Referer: "https://ok.ru/",
-                "User-Agent": UA
-              }
-            }
+            notWebReady: true
           }
         }
       ]
@@ -499,13 +494,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 			season: 1,
 			episode: epNumber,
             behaviorHints: {
-              notWebReady: true,
-              proxyHeaders: {
-                request: {
-                  Referer: "https://ok.ru/",
-                  "User-Agent": UA
-                }
-              }
+              notWebReady: true
             }
           }
         ]
@@ -518,7 +507,10 @@ builder.defineStreamHandler(async ({ type, id }) => {
         streams: [
           {
             title: "KhmerDub",
-            url: cand
+            url: cand,
+            behaviorHints: {
+              notWebReady: true
+			}
           }
         ]
       };
