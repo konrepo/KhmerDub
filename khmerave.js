@@ -424,10 +424,6 @@ async function handleEpisodeOne(url, UA) {
 builder.defineStreamHandler(async ({ type, id }) => {
   if (type !== "series") return { streams: [] };
 
-  const BASE_URL =
-    process.env.RENDER_EXTERNAL_URL ||
-    "https://khmerdub-test.onrender.com";
-
   const realUrl = Buffer.from(id, "base64")
     .toString("utf8")
     .replace("#ep1", "");
@@ -445,7 +441,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
       // Proxy ONLY okcdn / ok.ru streams
       if (original.includes("okcdn.ru") || original.includes("ok.ru")) {
         result.streams[0].url =
-          `${BASE_URL}/proxy?url=${encodeURIComponent(original)}`;
+          `/proxy?url=${encodeURIComponent(original)}`;
       }
 
       result.streams[0].behaviorHints = { notWebReady: true };
@@ -496,7 +492,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
 
       const proxyUrl =
-        `${BASE_URL}/proxy?url=${encodeURIComponent(direct)}`;
+        `/proxy?url=${encodeURIComponent(direct)}`;
 
       return {
         streams: [
