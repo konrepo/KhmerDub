@@ -416,7 +416,59 @@ app.get("/ok", async (req, res) => {
   const direct = await resolveOkRuToDirect(iframe, UA);
   if (!direct) return res.status(404).send("Could not resolve OK stream");
 
-  return res.redirect(`${BASE_URL}/proxy?url=${encodeURIComponent(direct)}`);
+  try {
+    const response = await axios({
+      method: "GET",
+      url: direct,
+      responseType: "stream",
+      headers: {
+        "User-Agent": UA,
+        Referer: "https://ok.ru/"
+      },
+      timeout: 20000
+    });
+
+    const contentType = response.headers["content-type"] || "";
+
+    if (
+      contentType.includes("application/vnd.apple.mpegurl") ||
+      direct.includes(".m3u8")
+    ) {
+      let playlist = "";
+
+      response.data.on("data", (chunk) => {
+        playlist += chunk.toString();
+      });
+
+      response.data.on("end", () => {
+        const base = new URL(direct);
+
+        playlist = playlist.replace(/^(?!#)(.+)$/gm, (line) => {
+          if (!line.trim()) return line;
+          try {
+            const absoluteUrl = new URL(line, base).href;
+            return `${BASE_URL}/proxy?url=${encodeURIComponent(absoluteUrl)}`;
+          } catch {
+            return line;
+          }
+        });
+
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.apple.mpegurl"
+        );
+        res.send(playlist);
+      });
+
+      return;
+    }
+
+    res.setHeader("Content-Type", contentType);
+    response.data.pipe(res);
+  } catch (err) {
+    console.error("OK direct proxy error:", err.message);
+    res.status(500).send("Proxy failed");
+  }
 });
 
 app.get("/proxy", async (req, res) => {
