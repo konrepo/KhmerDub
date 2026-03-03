@@ -402,7 +402,7 @@ async function handleEpisodeOne(url, UA) {
     if (!candidate) return { streams: [] };
 
     const cand = normalizeOkUrl(candidate);
-    const direct = cand;
+    const direct = await resolveOkRuToDirect(cand, axios, UA);
 
     if (!direct) return { streams: [] };
 
@@ -478,7 +478,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
     // OK.ru resolver
     if (cand.includes("ok.ru")) {
-      const direct = cand;
+      const direct = await resolveOkRuToDirect(cand, axios, UA);
 	  console.log("Direct stream:", direct);  //remove log later
 
       if (!direct) return { streams: [] };
