@@ -232,11 +232,10 @@ builder.defineMetaHandler(async ({ type, id }) => {
 				let text = $(el).text().trim();
 				text = text.replace(/\s+/g, " ");
 				
-				// Exclude ONLY exact "Episode 0" or "Episode 1"
-				if (/^Episode\s+0$/i.test(text)) return;
+				// Exclude Episode 1 (album page, not real video)
 				if (/^Episode\s+1$/i.test(text)) return;
 				
-				 episodes.push(link);
+				episodes.push(link);
             });
 
         if (episodes.length) {
@@ -247,12 +246,19 @@ builder.defineMetaHandler(async ({ type, id }) => {
         const videos = episodes.map((link, index) => {
 			const isAlbum = link.includes("/album/");
 			const episodeUrl = isAlbum ? link + "#ep1" : link;
+
+			// Fix Episode 0 → extract number from URL (e.g. -20-end)
+			let epNumber = index + 1;
+			const match = link.match(/-(\d+)/);
+			if (match) {
+				epNumber = parseInt(match[1], 10);
+			}
 			
 			return {				
 				id: Buffer.from(episodeUrl).toString("base64"),
 				season: 1,
-				episode: index + 1,
-				title: `Episode ${String(index + 1).padStart(2, "0")}`,
+				episode: epNumber,
+				title: `Episode ${String(epNumber).padStart(2, "0")}`,
 				thumbnail: poster
 			};
 		});
