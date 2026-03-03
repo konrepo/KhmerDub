@@ -1,4 +1,4 @@
-const { addonBuilder } = require("stremio-addon-sdk");
+const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 
 const manifest = {
     id: "community.khmerdub.world",
@@ -537,15 +537,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
 const express = require("express");
 const app = express();
 
-const addonInterface = builder.getInterface();
-app.use("/", addonInterface);
+app.use("/", serveHTTP(builder.getInterface()));
 
 // ===== PROXY ROUTE =====
 app.get("/proxy", async (req, res) => {
   const target = req.query.url;
   if (!target) return res.status(400).send("Missing url");
 
-  // Prevent double-proxy loop
   if (target.startsWith(`${req.protocol}://${req.get("host")}/proxy`)) {
     return res.redirect(target);
   }
@@ -562,7 +560,6 @@ app.get("/proxy", async (req, res) => {
       responseType: isPlaylist ? "text" : "stream"
     });
 
-    // ===== PLAYLIST =====
     if (isPlaylist) {
       let body = response.data;
 
@@ -576,7 +573,6 @@ app.get("/proxy", async (req, res) => {
       return res.send(body);
     }
 
-    // ===== SEGMENTS (TS/AAC/etc) =====
     response.data.pipe(res);
 
   } catch (err) {
