@@ -498,7 +498,13 @@ app.get("/proxy", async (req, res) => {
 /* ---------- START ---------- */
 const port = process.env.PORT || 7000;
 
-serveHTTP(builder.getInterface(), {
-  port,
-  server: app
+const addonInterface = builder.getInterface();
+
+// Attach addon handler manually
+app.use((req, res) => {
+  addonInterface(req, res);
+});
+
+app.listen(port, () => {
+  console.log("Server listening on", port);
 });
