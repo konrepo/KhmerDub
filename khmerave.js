@@ -429,7 +429,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
     const realUrl = Buffer.from(id, "base64").toString("utf8").replace("#ep1", "");
 
-    const UA = "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
+    const UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
 
     // EP1 album page
     if (realUrl.includes("/album/")) {
@@ -520,6 +520,7 @@ app.use((req, res, next) => {
 // PROXY (must be BEFORE serveHTTP mounts)
 app.get("/proxy", async (req, res) => {
     const target = req.query.url;
+
     console.log("==== PROXY REQUEST ====");
     console.log("Incoming:", req.method, req.originalUrl);
     console.log("Target  :", target);
@@ -532,30 +533,38 @@ app.get("/proxy", async (req, res) => {
         const response = await axios.get(target, {
             headers: {
                 Referer: "https://ok.ru/",
-                "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)"
+                "User-Agent":
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
             },
             timeout: 20000,
-            responseType: isPlaylist ? "text" : "stream",
-            // helps some CDNs
-            maxRedirects: 5
+            responseType: isPlaylist ? "text" : "stream"
         });
 
         if (isPlaylist) {
             const base = target.substring(0, target.lastIndexOf("/") + 1);
             let body = response.data;
 
-            // Rewrite playlist lines to /proxy
-            body = body.replace(/^([^\r\n#][^\r\n]*)/gm, (line) => {
-                const abs = absoluteUrlFrom(base, line.trim());
-                return `/proxy?url=${encodeURIComponent(abs)}`;
-            });
+            body = body
+                .split("\n")
+                .map((line) => {
+                    const trimmed = line.trim();
+
+                    // Keep comments & empty lines untouched
+                    if (!trimmed || trimmed.startsWith("#")) {
+                        return line;
+                    }
+
+                    const abs = absoluteUrlFrom(base, trimmed);
+                    return `/proxy?url=${encodeURIComponent(abs)}`;
+                })
+                .join("\n");
 
             res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
             console.log("Proxy playlist OK");
             return res.send(body);
         }
 
-        console.log("Proxy stream OK (segment/media)");
+        console.log("Proxy segment OK");
         response.data.pipe(res);
     } catch (err) {
         console.error("Proxy error:", err.message);
