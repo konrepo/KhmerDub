@@ -227,9 +227,16 @@ builder.defineMetaHandler(async ({ type, id }) => {
         $("table#latest-videos a[href], div.col-xs-6.col-sm-6.col-md-3 a[href]")
             .each((i, el) => {
                 const link = $(el).attr("href");
-                if (link) {
-                    episodes.push(link);
-                }
+                if (!link) return;
+
+				let text = $(el).text().trim();
+				text = text.replace(/\s+/g, " ");
+				
+				// Exclude ONLY exact "Episode 0" or "Episode 1"
+				if (/^Episode\s+0$/i.test(text)) return;
+				if (/^Episode\s+1$/i.test(text)) return;
+				
+				 episodes.push(link);
             });
 
         if (episodes.length) {
