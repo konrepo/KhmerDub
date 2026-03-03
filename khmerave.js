@@ -415,6 +415,7 @@ async function handleEpisodeOne(url, UA) {
           season: 1,
           episode: 1,
           behaviorHints: {
+            notWebReady: true,
             proxyHeaders: {
               request: {
                 Referer: "https://ok.ru/",
