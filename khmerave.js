@@ -537,7 +537,13 @@ builder.defineStreamHandler(async ({ type, id }) => {
 const express = require("express");
 const app = express();
 
-app.use("/", serveHTTP(builder.getInterface()));
+const addonInterface = builder.getInterface();
+
+app.get("/manifest.json", addonInterface);
+app.get("/catalog/:type/:id.json", addonInterface);
+app.get("/catalog/:type/:id/:extra.json", addonInterface);
+app.get("/meta/:type/:id.json", addonInterface);
+app.get("/stream/:type/:id.json", addonInterface);
 
 // ===== PROXY ROUTE =====
 app.get("/proxy", async (req, res) => {
@@ -582,5 +588,7 @@ app.get("/proxy", async (req, res) => {
 });
 
 app.listen(process.env.PORT || 7000, () => {
+  console.log("KhmerDub addon running...");
+});
   console.log("KhmerDub addon running...");
 });
