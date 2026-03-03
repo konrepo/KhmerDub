@@ -402,7 +402,7 @@ async function handleEpisodeOne(url, UA) {
         const formattedTitle = `${showName}  S01:E01`;
 
         const BASE_URL = getBaseUrl();
-        const proxied = `${BASE_URL}/proxy?url=${encodeURIComponent(direct)}`;
+        const proxied = `${BASE_URL}/proxy?url=${encodeURIComponent(decodeURIComponent(direct))}`;
 
         console.log("EP1 direct:", direct);
         console.log("EP1 proxy :", proxied);
@@ -475,13 +475,22 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
         const BASE_URL = getBaseUrl();
 
-        // ALWAYS proxy OKCDN / OKRU / m3u8 for iOS stability
         const shouldProxy =
             /okcdn\.ru/i.test(direct) ||
             /ok\.ru/i.test(direct) ||
             /\.m3u8(\?|$)/i.test(direct);
 
-        const finalUrl = shouldProxy ? `${BASE_URL}/proxy?url=${encodeURIComponent(direct)}` : direct;
+        const normalizedDirect = (() => {
+            try {
+                return decodeURIComponent(direct);
+            } catch {
+                return direct; // if not encoded, leave it
+            }
+        })();
+
+        const finalUrl = shouldProxy
+            ? `${BASE_URL}/proxy?url=${encodeURIComponent(normalizedDirect)}`
+            : direct;
 
         console.log("Stream page :", realUrl);
         console.log("Candidate   :", cand);
@@ -527,18 +536,47 @@ app.get("/proxy", async (req, res) => {
 
     if (!target) return res.status(400).send("Missing url");
 
+    // iOS often needs CORS on the proxy response
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+
     try {
         const isPlaylist = /\.m3u8(\?|$)/i.test(target);
+
+        // Forward Range if present (very important for iOS)
+        const range = req.headers.range;
 
         const response = await axios.get(target, {
             headers: {
                 Referer: "https://ok.ru/",
                 "User-Agent":
-                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+                    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+                ...(range ? { Range: range } : {})
             },
             timeout: 20000,
-            responseType: isPlaylist ? "text" : "stream"
+            responseType: isPlaylist ? "text" : "stream",
+            maxRedirects: 5,
+            validateStatus: () => true
         });
+
+        // Pass through status (200/206/302/etc)
+        res.status(response.status);
+
+        // Pass through key headers iOS cares about
+        const passthroughHeaders = [
+            "content-type",
+            "content-length",
+            "accept-ranges",
+            "content-range",
+            "cache-control",
+            "expires",
+            "last-modified"
+        ];
+
+        for (const h of passthroughHeaders) {
+            const val = response.headers?.[h];
+            if (val) res.setHeader(h, val);
+        }
 
         if (isPlaylist) {
             const base = target.substring(0, target.lastIndexOf("/") + 1);
@@ -555,16 +593,27 @@ app.get("/proxy", async (req, res) => {
                     }
 
                     const abs = absoluteUrlFrom(base, trimmed);
-                    return `/proxy?url=${encodeURIComponent(abs)}`;
+
+                    // Avoid double-encoding URLs that already contain %xx
+                    const normalizedAbs = (() => {
+                        try {
+                            return decodeURIComponent(abs);
+                        } catch {
+                            return abs;
+                        }
+                    })();
+
+                    return `/proxy?url=${encodeURIComponent(normalizedAbs)}`;
                 })
                 .join("\n");
 
+            // Force correct playlist content-type
             res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
             console.log("Proxy playlist OK");
             return res.send(body);
         }
 
-        console.log("Proxy segment OK");
+        console.log("Proxy segment/media OK");
         response.data.pipe(res);
     } catch (err) {
         console.error("Proxy error:", err.message);
