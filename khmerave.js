@@ -531,88 +531,59 @@ builder.defineStreamHandler(async ({ type, id }) => {
 });
 
 
-const http = require("http");
-const url = require("url");
+const express = require("express");
+const app = express();
 
-const addonInterface = builder.getInterface();
+// Proxy route FIRST
+app.get("/proxy", async (req, res) => {
+  console.log("Proxy hit:", req.url);
 
-// Start addon server
-const addonServer = serveHTTP(addonInterface);
+  const target = req.query.url;
+  if (!target) return res.status(400).send("Missing url");
 
-// Get actual Node server instance
-const realServer = addonServer.server || addonServer;
+  try {
+    const isPlaylist = target.includes(".m3u8");
 
-// Save original handler
-const originalHandler = realServer.listeners("request")[0];
+    const response = await axios.get(target, {
+      headers: {
+        Referer: "https://ok.ru/",
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
+      },
+      responseType: isPlaylist ? "text" : "stream"
+    });
 
-// Remove default handler
-realServer.removeAllListeners("request");
+    if (isPlaylist) {
+      let body = response.data;
+      const base = target.substring(0, target.lastIndexOf("/") + 1);
 
-// Add wrapped handler
-realServer.on("request", async (req, res) => {
-  console.log("=== Incoming ===", req.method, req.url);
-
-  const parsed = url.parse(req.url, true);
-
-  // ===== PROXY =====
-  if (parsed.pathname === "/proxy") {
-    console.log(">>> PROXY HIT:", parsed.query);
-
-    const target = parsed.query.url;
-    if (!target) {
-      console.log("!!! Missing target");
-      res.statusCode = 400;
-      return res.end("Missing url");
-    }
-
-    try {
-      const isPlaylist = target.includes(".m3u8");
-      console.log("Is playlist:", isPlaylist);
-
-      const response = await axios.get(target, {
-        headers: {
-          Referer: "https://ok.ru/",
-          "User-Agent":
-            "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36"
-        },
-        responseType: isPlaylist ? "text" : "stream"
-      });
-
-      console.log("Fetched OK.ru OK");
-
-      if (isPlaylist) {
-        let body = response.data;
-        const base = target.substring(0, target.lastIndexOf("/") + 1);
-
-        body = body.replace(
-          /^([^#\r\n][^\r\n]*)/gm,
-          (line) => {
-            if (line.startsWith("http")) {
-              return `/proxy?url=${encodeURIComponent(line)}`;
-            }
-            if (!line.startsWith("#")) {
-              return `/proxy?url=${encodeURIComponent(base + line)}`;
-            }
-            return line;
+      body = body.replace(
+        /^([^#\r\n][^\r\n]*)/gm,
+        (line) => {
+          if (line.startsWith("http")) {
+            return `/proxy?url=${encodeURIComponent(line)}`;
           }
-        );
+          if (!line.startsWith("#")) {
+            return `/proxy?url=${encodeURIComponent(base + line)}`;
+          }
+          return line;
+        }
+      );
 
-        console.log("Playlist rewritten");
-        res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-        return res.end(body);
-      }
-
-      console.log("Streaming segment");
-      response.data.pipe(res);
-      return;
-
-    } catch (err) {
-      console.error("Proxy error:", err.message);
-      res.statusCode = 500;
-      return res.end("Proxy failed");
+      res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
+      return res.send(body);
     }
-  }
 
-  console.log("Passing to addon handler");
-  originalHandler(req, res);
+    response.data.pipe(res);
+
+  } catch (err) {
+    console.error("Proxy error:", err.message);
+    res.status(500).send("Proxy failed");
+  }
+});
+
+// IMPORTANT: Let SDK attach itself to this app
+serveHTTP(builder.getInterface(), {
+  port: process.env.PORT || 7000,
+  app
 });
