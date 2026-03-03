@@ -493,7 +493,11 @@ app.get("/proxy", async (req, res) => {
 /* ===============================
    MOUNT STREMIO ADDON ROUTES
 ================================= */
-app.use("/", serveHTTP(builder.getInterface()));
+const addonInterface = builder.getInterface();
+
+app.use((req, res) => {
+  addonInterface(req, res);
+});
 
 /* ===============================
    START
