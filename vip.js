@@ -368,23 +368,24 @@ builder.defineMetaHandler(async ({ id }) => {
 });
 
 /* =========================
-   RESOLVER
+   RESOLVER Kolab
 ========================= */
 async function resolvePlayerUrl(playerUrl) {
   try {
     const { data } = await axiosClient.get(playerUrl);
 
-    console.log("PLAYER HTML:", data.substring(0, 1000)); // first 1000 chars
+    // Find stream parameter inside videoSources
+    const match = data.match(/player\.php\?stream=([^"&]+)/i);
+    if (!match) return null;
 
-    const match = data.match(/https?:\/\/[^"']+\.m3u8[^"']*/i);
+    const base64 = match[1];
 
-    if (match) {
-      return match[0];
-    }
+    // Decode base64 safely
+    const decoded = Buffer.from(base64, "base64").toString("utf8");
 
-    return null;
+    return decoded;
+
   } catch (e) {
-    console.log("PLAYER ERROR:", e);
     return null;
   }
 }
@@ -443,6 +444,7 @@ serveHTTP(builder.getInterface(), {
 
 
 console.log("Khmer VIP Addon running");
+
 
 
 
