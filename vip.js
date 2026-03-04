@@ -67,10 +67,24 @@ function normalizePoster(url) {
 }
 
 function extractVideoLinks(text) {
-  const regex =
+  const directRegex =
     /https?:\/\/[^\s"';<> ]+\.(?:m3u8|mp4)(?:\?[^\s"';<> ]+)?/gi;
-  const matches = text.match(regex);
-  return matches ? Array.from(new Set(matches)) : [];
+
+  const okRegex =
+    /https?:\/\/ok\.ru\/videoembed\/\d+/gi;
+
+  const playerRegex =
+    /https?:\/\/phumikhmer\.vip\/player\.php\?id=\d+/gi;
+
+  const directMatches = text.match(directRegex) || [];
+  const okMatches = text.match(okRegex) || [];
+  const playerMatches = text.match(playerRegex) || [];
+
+  return Array.from(new Set([
+    ...directMatches,
+    ...okMatches,
+    ...playerMatches
+  ]));
 }
 
 async function getPostId(url) {
@@ -395,3 +409,4 @@ serveHTTP(builder.getInterface(), {
 
 
 console.log("Khmer VIP Addon running");
+
