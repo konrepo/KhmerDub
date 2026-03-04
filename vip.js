@@ -38,6 +38,7 @@ const POST_INFO = new Map(); // postId -> { maxEp?: number }
 const BLOG_IDS = {
   TVSABAY: "8016412028548971199",
   ONELEGEND: "596013908374331296",
+  KOLAB: "7770980406614294729"
 };
 
 const USER_AGENT =
@@ -121,15 +122,13 @@ async function fetchFromBlog(blogId, postId) {
 }
 
 async function getStreamDetail(postId) {
-  // Try ONELEGEND first
-  let detail = await fetchFromBlog(BLOG_IDS.ONELEGEND, postId);
-
-  // Fallback to TVSABAY
-  if (!detail) {
-    detail = await fetchFromBlog(BLOG_IDS.TVSABAY, postId);
+  for (const blogId of Object.values(BLOG_IDS)) {
+    const detail = await fetchFromBlog(blogId, postId);
+    if (detail) {
+      return detail;
+    }
   }
-
-  return detail;
+  return null;
 }
 
 /* =========================
@@ -393,5 +392,6 @@ builder.defineStreamHandler(async ({ id }) => {
 serveHTTP(builder.getInterface(), {
   port: process.env.PORT || 7000,
 });
+
 
 console.log("Khmer VIP Addon running");
