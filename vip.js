@@ -374,6 +374,8 @@ async function resolvePlayerUrl(playerUrl) {
   try {
     const { data } = await axiosClient.get(playerUrl);
 
+    console.log("PLAYER HTML:", data.substring(0, 1000)); // first 1000 chars
+
     const match = data.match(/https?:\/\/[^"']+\.m3u8[^"']*/i);
 
     if (match) {
@@ -381,7 +383,8 @@ async function resolvePlayerUrl(playerUrl) {
     }
 
     return null;
-  } catch {
+  } catch (e) {
+    console.log("PLAYER ERROR:", e);
     return null;
   }
 }
@@ -440,5 +443,6 @@ serveHTTP(builder.getInterface(), {
 
 
 console.log("Khmer VIP Addon running");
+
 
 
