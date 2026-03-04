@@ -419,20 +419,26 @@ async function handleEpisodeOne(url, UA) {
     return {
       streams: [
         {
-          title: formattedTitle,
-          //url: direct,
-		  url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+          title: formattedTitle + " (Direct)",
+          url: direct,
           season: 1,
           episode: 1,
-          //behaviorHints: {
-            //proxyHeaders: {
-              //request: {
-                //Referer: "https://ok.ru/",
-                //"User-Agent": UA
-              //}
-            //}
-          //}
-        }
+          behaviorHints: {
+            notWebReady: true,
+            proxyHeaders: {
+              request: {
+                Referer: "https://ok.ru/",
+                "User-Agent": UA
+              }
+            }
+          }
+        },
+		{
+          title: formattedTitle + " (iOS)",
+		  url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+          season: 1,
+          episode: 1
+		}  
       ]
     };
 
@@ -504,21 +510,26 @@ builder.defineStreamHandler(async ({ type, id }) => {
       return {
         streams: [
           {
-            title: formattedTitle,
-            //url: direct,
-			url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+            title: formattedTitle + " (Direct)",
+            url: direct,
 			season: 1,
 			episode: epNumber,
-            //behaviorHints: {
-              //notWebReady: true,
-              //proxyHeaders: {
-                //request: {
-                  //Referer: "https://ok.ru/",
-                  //"User-Agent": UA
-                //}
-              //}
-            //}
-          }
+            behaviorHints: {
+              notWebReady: true,
+              proxyHeaders: {
+                request: {
+                  Referer: "https://ok.ru/",
+                  "User-Agent": UA
+                }
+              }
+            }
+          },
+		  {
+            title: formattedTitle + " (iOS)",
+		    url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
+            season: 1,
+            episode: epNumber
+		  }  
         ]
       };
     }
