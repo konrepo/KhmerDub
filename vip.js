@@ -368,6 +368,25 @@ builder.defineMetaHandler(async ({ id }) => {
 });
 
 /* =========================
+   RESOLVER
+========================= */
+async function resolvePlayerUrl(playerUrl) {
+  try {
+    const { data } = await axiosClient.get(playerUrl);
+
+    const match = data.match(/https?:\/\/[^"']+\.m3u8[^"']*/i);
+
+    if (match) {
+      return match[0];
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/* =========================
    STREAM
 ========================= */
 builder.defineStreamHandler(async ({ id }) => {
@@ -379,8 +398,20 @@ builder.defineStreamHandler(async ({ id }) => {
     const detail = await getStreamDetail(postId);
     if (!detail) return { streams: [] };
 
-    const url = detail.urls[episode - 1];
-    if (!url) return { streams: [] };
+    let url = detail.urls[episode - 1];
+    if (!url) {
+      return { streams: [] };
+    }
+
+    // If it's player.php, resolve real m3u8
+    if (url.includes("player.php")) {
+      const resolved = await resolvePlayerUrl(url);
+      if (resolved) {
+        url = resolved;
+      } else {
+        return { streams: [] };
+      }
+    }
 
     return {
       streams: [
@@ -409,4 +440,5 @@ serveHTTP(builder.getInterface(), {
 
 
 console.log("Khmer VIP Addon running");
+
 
