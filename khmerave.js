@@ -311,7 +311,6 @@ function tryExtractVideoCandidateFromKhmerAvenue(html) {
   return null;
 }
 
-
 function htmlUnescape(s) {
   return (s || "")
     .replace(/&quot;/g, '"')
@@ -328,7 +327,7 @@ function normalizeOkUrl(url) {
 }
 
 // Resolver
-async function resolveOkRuToDirect(iframeUrl, axios, ua) {
+async function resolveOkRuSources(iframeUrl, axios, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
 
@@ -341,46 +340,43 @@ async function resolveOkRuToDirect(iframeUrl, axios, ua) {
     });
 
     let html = okRes.data;
-    if (typeof html !== "string") {
-      html = String(html);
-    }
-		
-    // Decode HTML escaping
+    if (typeof html !== "string") html = String(html);
+
+    // Unescape common OK.ru escaping
     html = html
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
-      .replace(/\\\//g, "/");	  
+      .replace(/\\\//g, "/");
 
-    let match = null;
-
-    const patterns = [
-      /"ondemandHls"\s*:\s*"([^"]+)/,
-      /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/,
-      /"hlsManifestUrl"\s*:\s*"([^"]+)/,
-      /"metadataUrl"\s*:\s*"(https:[^"]+\.m3u8[^"]*)"/,
-      /"(https:[^"]+\.m3u8[^"]*)"/
-    ];
-
-    for (const re of patterns) {
-      const m = html.match(re);
-      if (m && m[1]) {
-        match = m;
-        break;
+    const pickFirst = (patterns) => {
+      for (const re of patterns) {
+        const m = html.match(re);
+        if (m && m[1]) return m[1].replace(/\\&/g, "&");
       }
-    }
-
-    if (!match || !match[1]) {	
       return null;
-    }
+    };
 
-    const cleanUrl = match[1].replace(/\\&/g, "&");
+    // Prefer MP4 for web/iOS when possible
+    const mp4 = pickFirst([
+      /"ondemandMp4"\s*:\s*"([^"]+)/i,
+      /"mp4Url"\s*:\s*"([^"]+)/i,
+      /"(https:[^"]+\.mp4[^"]*)"/i
+    ]);
 
-    return cleanUrl;
+    // HLS fallback (often what you currently get)
+    const hls = pickFirst([
+      /"ondemandHls"\s*:\s*"([^"]+)/i,
+      /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/i,
+      /"hlsManifestUrl"\s*:\s*"([^"]+)/i,
+      /"metadataUrl"\s*:\s*"(https:[^"]+\.m3u8[^"]*)"/i,
+      /"(https:[^"]+\.m3u8[^"]*)"/i
+    ]);
 
+    return { mp4, hls, page: okUrl };
   } catch (err) {
-    console.error("OK resolver error:", err.message);  
-    return null;
+    console.error("OK resolver error:", err.message);
+    return { mp4: null, hls: null, page: normalizeOkUrl(iframeUrl) };
   }
 }
 
@@ -398,13 +394,12 @@ async function handleEpisodeOne(url, UA) {
 
     const html = epRes.data;
     const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
-
     if (!candidate) return { streams: [] };
 
     const cand = normalizeOkUrl(candidate);
-    const direct = await resolveOkRuToDirect(cand, axios, UA);
+    const src = await resolveOkRuSources(cand, axios, UA);
 
-    if (!direct) return { streams: [] };
+    const streams = [];
 
     // Extract show name from URL
     const showName = url
@@ -416,13 +411,126 @@ async function handleEpisodeOne(url, UA) {
 
     const formattedTitle = `${showName}  S01:E01`;
 
-    return {
-      streams: [
-        {
-          title: formattedTitle + " (Direct)",
-          url: direct,
-          season: 1,
-          episode: 1,
+    // 1) Web-ready MP4 (best for iOS/Web)
+    if (src.mp4 && /^https:\/\//i.test(src.mp4)) {
+      streams.push({
+        name: "KhmerDub (MP4)",
+        description: formattedTitle,
+        url: src.mp4
+      });
+    }
+
+    // 2) HLS via proxy (works on desktop/android more often)
+    if (src.hls) {
+      streams.push({
+        name: "KhmerDub (HLS)",
+        description: formattedTitle,
+        url: src.hls,
+        behaviorHints: {
+          notWebReady: true,
+          proxyHeaders: {
+            request: {
+              Referer: "https://ok.ru/",
+              "User-Agent": UA
+            }
+          }
+        }
+      });
+    }
+
+    // 3) External fallback for iOS (opens in browser)
+    if (src.page) {
+      streams.push({
+        name: "Open in Browser",
+        description: formattedTitle,
+        externalUrl: src.page
+      });
+    }
+
+    return { streams };
+  } catch (err) {
+    console.error("EP1 error:", err.message);
+    return { streams: [] };
+  }
+}
+
+
+builder.defineStreamHandler(async ({ type, id }) => {
+  if (type !== "series") return { streams: [] };
+
+  const decoded = Buffer.from(id, "base64").toString("utf8");
+  const realUrl = decoded.replace("#ep1", "");
+
+  const UA =
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+
+  // Detect EP1 (album page)
+  if (realUrl.includes("/album/")) {
+    return await handleEpisodeOne(realUrl, UA);
+  }
+
+  try {
+    const epRes = await axios.get(realUrl, {
+      headers: {
+        "User-Agent": UA,
+        "Referer": realUrl.includes("khmerdrama.com")
+          ? "https://www.khmerdrama.com/"
+          : "https://www.khmeravenue.com/"
+      },
+      timeout: 15000
+    });
+
+    const html = epRes.data;
+    const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
+    if (!candidate) return { streams: [] };
+
+    const cand = normalizeOkUrl(candidate);
+
+    // If candidate is already direct media URL (.m3u8 or .mp4), return as-is
+    if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
+      return {
+        streams: [
+          {
+            name: "KhmerDub",
+            description: "Direct media",
+            url: cand
+          }
+        ]
+      };
+    }
+
+    // OK.ru resolver
+    if (cand.includes("ok.ru")) {
+      const src = await resolveOkRuSources(cand, axios, UA);
+      const streams = [];
+
+      // Show name + episode number
+      const showName = realUrl
+        .split("/")
+        .filter(Boolean)
+        .slice(-1)[0]
+        .replace(/-\d+\/?$/, "")
+        .replace(/-/g, " ")
+        .replace(/\b\w/g, c => c.toUpperCase());
+
+      const epNumber = parseInt(realUrl.match(/-(\d+)\//)?.[1] || "1", 10);
+      const formattedTitle = `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
+
+      // 1) Web-ready MP4
+      if (src.mp4 && /^https:\/\//i.test(src.mp4)) {
+        streams.push({
+          name: "KhmerDub (MP4)",
+          description: formattedTitle,
+          url: src.mp4
+        });
+      }
+
+      // 2) HLS via proxy
+      if (src.hls) {
+        streams.push({
+          name: "KhmerDub (HLS)",
+          description: formattedTitle,
+          url: src.hls,
           behaviorHints: {
             notWebReady: true,
             proxyHeaders: {
@@ -432,122 +540,22 @@ async function handleEpisodeOne(url, UA) {
               }
             }
           }
-        },
-		{
-          title: formattedTitle + " (iOS)",
-		  url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
-          season: 1,
-          episode: 1
-		}  
-      ]
-    };
+        });
+      }
 
-  } catch {
-    return { streams: [] };
-  }
-}
+      // 3) External
+      if (src.page) {
+        streams.push({
+          name: "Open in Browser",
+          description: formattedTitle,
+          externalUrl: src.page
+        });
+      }
 
-
-builder.defineStreamHandler(async ({ type, id }) => {
-  if (type !== "series") return { streams: [] };
-  
-  const realUrl = Buffer.from(id, "base64")
-    .toString("utf8")
-    .replace("#ep1", "");
-  
-  const UA =
-    "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 Chrome/137 Safari/537.36";
-
-  // Detect EP1 (album page)
-  if (realUrl.includes("/album/")) {
-    return await handleEpisodeOne(realUrl, UA);
-  }
-
-  try {
-    // Fetch episode page
-    const epRes = await axios.get(realUrl, {
-      headers: {
-        "User-Agent": UA,
-        "Referer": realUrl.includes("khmerdrama.com")
-			? "https://www.khmerdrama.com/"
-			: "https://www.khmeravenue.com/"
-      },
-      timeout: 15000
-    });
-
-    const html = epRes.data;
-
-    // Extract candidate link
-    const candidate = tryExtractVideoCandidateFromKhmerAvenue(html);
-
-    if (!candidate) return { streams: [] };
-
-    const cand = normalizeOkUrl(candidate);
-
-    // OK.ru resolver
-    if (cand.includes("ok.ru")) {
-      const direct = await resolveOkRuToDirect(cand, axios, UA);
-	  console.log("Direct stream:", direct);  //remove log later
-
-      if (!direct) return { streams: [] };
-	  
-	  // Extract show name from URL	  
-	  const showName = realUrl
-        .split("/")
-        .filter(Boolean)
-        .slice(-1)[0]
-        .replace(/-\d+$/, "") // remove episode number
-        .replace(/-/g, " ")
-        .replace(/\b\w/g, c => c.toUpperCase());
-	  
-	  const epNumber = parseInt(
-        realUrl.match(/-(\d+)\//)?.[1] || "1",
-        10
-	  );
-
-	  const formattedTitle = `${showName}  S01:E${String(epNumber).padStart(2, "0")}`;
-
-      return {
-        streams: [
-          {
-            title: formattedTitle + " (Direct)",
-            url: direct,
-			season: 1,
-			episode: epNumber,
-            behaviorHints: {
-              notWebReady: true,
-              proxyHeaders: {
-                request: {
-                  Referer: "https://ok.ru/",
-                  "User-Agent": UA
-                }
-              }
-            }
-          },
-		  {
-            title: formattedTitle + " (iOS)",
-		    url: `https://khmerdub-proxy.onrender.com/proxy?url=${encodeURIComponent(direct)}`,
-            season: 1,
-            episode: epNumber
-		  }  
-        ]
-      };
-    }
-
-    // If candidate is already a direct media URL (.m3u8 or .mp4), return as-is
-    if (/\.(m3u8|mp4)(\?|$)/i.test(cand)) {
-      return {
-        streams: [
-          {
-            title: "KhmerDub",
-            url: cand
-          }
-        ]
-      };
+      return { streams };
     }
 
     return { streams: [] };
-
   } catch (err) {
     console.error("Stream error:", err.message);
     return { streams: [] };
