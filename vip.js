@@ -374,8 +374,10 @@ async function resolvePlayerUrl(playerUrl) {
   try {
     const { data } = await axiosClient.get(playerUrl);
 
-    // Fix encoded ampersands
-    const html = data.replace(/&amp;/g, "&");
+    // Unescape slashes and ampersands
+    let html = data
+      .replace(/\\\//g, "/")
+      .replace(/&amp;/g, "&");
 
     // Extract full proxied stream URL
     const match = html.match(
@@ -387,7 +389,7 @@ async function resolvePlayerUrl(playerUrl) {
     }
 
     return null;
-  } catch {
+  } catch (e) {
     return null;
   }
 }
