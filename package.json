@@ -1,7 +1,7 @@
 {
   "name": "khmerdub",
   "version": "1.0.0",
-  "description": "Khmer VIP Stremio Addon",
+  "description": "Stream Asian dramas dubbed in Khmer | Dev: TheDevilz.",
   "main": "vip.js",
   "type": "commonjs",
   "engines": {
