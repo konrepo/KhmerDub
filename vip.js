@@ -374,18 +374,20 @@ async function resolvePlayerUrl(playerUrl) {
   try {
     const { data } = await axiosClient.get(playerUrl);
 
-    // Find stream parameter inside videoSources
-    const match = data.match(/player\.php\?stream=([^"&]+)/i);
-    if (!match) return null;
+    // Fix encoded ampersands
+    const html = data.replace(/&amp;/g, "&");
 
-    const base64 = match[1];
+    // Extract full proxied stream URL
+    const match = html.match(
+      /https?:\/\/phumikhmer\.vip\/player\.php\?stream=[^"'<> ]+/i
+    );
 
-    // Decode base64 safely
-    const decoded = Buffer.from(base64, "base64").toString("utf8");
+    if (match) {
+      return match[0];
+    }
 
-    return decoded;
-
-  } catch (e) {
+    return null;
+  } catch {
     return null;
   }
 }
