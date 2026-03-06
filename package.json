@@ -2,13 +2,13 @@
   "name": "khmerdub",
   "version": "1.0.0",
   "description": "Stream Asian dramas dubbed in Khmer | Dev: TheDevilz.",
-  "main": "vip.js",
+  "main": "src/index.js",
   "type": "commonjs",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
-    "start": "node vip.js"
+    "start": "node src/index.js"
   },
   "repository": {
     "type": "git",
