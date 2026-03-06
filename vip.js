@@ -232,7 +232,7 @@ async function getEpisodes(postId) {
 }
 
 /* =========================
-    SCRAPE CATALOG IDRAMA
+   SCRAPE CATALOG IDRAMA
 ========================= */
 async function getIdramaItems(url) {
   const { data } = await axiosClient.get(url);
@@ -240,37 +240,28 @@ async function getIdramaItems(url) {
 
   const articles = $("article.hitmag-post").toArray();
 
-  const results = await Promise.all(
-    articles.map(async (el) => {
-      const $el = $(el);
-      const a = $el.find("h3.entry-title a").first();
-      if (!a.length) return null;
+  const results = articles.map((el) => {
+    const $el = $(el);
+    const a = $el.find("h3.entry-title a").first();
+    if (!a.length) return null;
 
-      const title = a.text().trim();
-      const link = a.attr("href");
+    const title = a.text().trim();
+    const link = a.attr("href");
 
-      const img = $el.find(".archive-thumb img").first();
-      let poster =
-        img.attr("data-src") ||
-        img.attr("src") ||
-        "";
+    const img = $el.find(".archive-thumb img").first();
+    const poster =
+      img.attr("data-src") ||
+      img.attr("src") ||
+      "";
 
-      if (!title || !link) return null;
+    if (!title || !link) return null;
 
-      try {
-        const postId = await getPostId(link);
-        if (!postId) return null;
-
-        return {
-          id: postId,
-          name: title,
-          poster: normalizePoster(poster),
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
+    return {
+      id: link,
+      name: title,
+      poster: normalizePoster(poster),
+    };
+  });
 
   return results.filter(Boolean);
 }
