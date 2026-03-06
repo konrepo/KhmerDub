@@ -166,47 +166,38 @@ async function getItems(url) {
 
   const articles = $("article").toArray();
 
-  const results = await Promise.all(
-    articles.map(async (el) => {
-      const $el = $(el);
-      const a = $el.find("h2 a, h3 a").first();
+  const results = articles.map((el) => {
+    const $el = $(el);
+    const a = $el.find("h2 a, h3 a").first();
 
-      const title = a.text().trim();
-      const link = a.attr("href");
-      if (!title || !link) return null;
+    const title = a.text().trim();
+    const link = a.attr("href");
+    if (!title || !link) return null;
 
-      const epMatch =
-        title.match(/\bEP\.?\s*(\d+)\b/i) ||
-        title.match(/\bEpisode\s*(\d+)\b/i) ||
-        title.match(/\[EP\.?\s*(\d+)\]/i);
+    const epMatch =
+      title.match(/\bEP\.?\s*(\d+)\b/i) ||
+      title.match(/\bEpisode\s*(\d+)\b/i) ||
+      title.match(/\[EP\.?\s*(\d+)\]/i);
 
-      const maxEp = epMatch ? parseInt(epMatch[1], 10) : null;
+    const maxEp = epMatch ? parseInt(epMatch[1], 10) : null;
 
-      const poster =
-        $el.find("a.img-holder").attr("data-src") ||
-        $el.find("a.img-holder").attr("data-bsrjs") ||
-        "";
+    const poster =
+      $el.find("a.img-holder").attr("data-src") ||
+      $el.find("a.img-holder").attr("data-bsrjs") ||
+      "";
 
-      try {
-        const postId = await getPostId(link);
-        if (!postId) return null;
+    // Optional: store maxEp temporarily using URL as key
+    if (maxEp) {
+      POST_INFO.set(link, { maxEp });
+    }
 
-        if (maxEp) {
-          POST_INFO.set(postId, { maxEp });
-        }
+    return {
+      id: link,
+      name: title,
+      poster: normalizePoster(poster),
+    };
+  });
 
-        return {
-          id: postId,
-          name: title,
-          poster: normalizePoster(poster),
-        };
-      } catch {
-        return null;
-      }
-    })
-  );
-
-  // remove nulls
   return results.filter(Boolean);
 }
 
@@ -359,22 +350,30 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 ========================= */
 builder.defineMetaHandler(async ({ id }) => {
   try {
-    const episodes = await getEpisodes(id);
+    // id is now the series URL
+    const seriesUrl = id;
+
+    // Get Blogger postId from the series page
+    const postId = await getPostId(seriesUrl);
+    if (!postId) return { meta: null };
+
+    // Get episodes using Blogger postId
+    const episodes = await getEpisodes(postId);
     if (!episodes.length) return { meta: null };
 
     const first = episodes[0];
 
     return {
       meta: {
-        id: id,
+        id: seriesUrl, // keep URL as ID
         type: "series",
         name: first.title,
-        poster: normalizePoster(first.thumbnail),
-        background: normalizePoster(first.thumbnail),
+        poster: first.thumbnail,
+        background: first.thumbnail,
         videos: episodes,
       },
     };
-  } catch {
+  } catch (err) {
     return { meta: null };
   }
 });
