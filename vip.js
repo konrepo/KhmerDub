@@ -309,7 +309,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     const PAGE_SIZE = 30;
     const skip = Number(extra?.skip || 0);
 
-    // Convert offset to WordPress page number
+    // Determine which WordPress page to load
     const page = Math.floor(skip / PAGE_SIZE) + 1;
 
     let url;
@@ -341,15 +341,20 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       items = await getIdramaItems(url);
     }
 
-    return {
-      metas: items.map(item => ({
+    // Now adjust within-page offset
+    const offsetInsidePage = skip % PAGE_SIZE;
+
+    const metas = items
+      .slice(offsetInsidePage, offsetInsidePage + PAGE_SIZE)
+      .map(item => ({
         id: item.id,
         type: "series",
         name: item.name,
         poster: item.poster,
         posterShape: "poster"
-      }))
-    };
+      }));
+
+    return { metas };
 
   } catch (err) {
     console.error("Catalog error:", err);
