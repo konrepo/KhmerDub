@@ -306,9 +306,11 @@ async function getIdramaItems(url) {
 ========================= */
 builder.defineCatalogHandler(async ({ id, extra }) => {
   try {
-    const pageSize = 30;
+    const PAGE_SIZE = 30;
     const skip = Number(extra?.skip || 0);
-    const page = Math.floor(skip / pageSize) + 1;
+
+    // Convert skip (item offset) into WordPress page number
+    const page = Math.floor(skip / PAGE_SIZE) + 1;
 
     let url;
     let items = [];
@@ -339,17 +341,19 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       items = await getIdramaItems(url);
     }
 
-    return {
-      metas: items.map(item => ({
-        id: item.id,
-        type: "series",
-        name: item.name,
-        poster: item.poster,
-        posterShape: "poster"
-      }))
-    };
+    // Always return exactly one page worth of results
+    const metas = items.slice(0, PAGE_SIZE).map(item => ({
+      id: item.id,
+      type: "series",
+      name: item.name,
+      poster: item.poster,
+      posterShape: "poster"
+    }));
 
-  } catch {
+    return { metas };
+
+  } catch (err) {
+    console.error("Catalog error:", err);
     return { metas: [] };
   }
 });
