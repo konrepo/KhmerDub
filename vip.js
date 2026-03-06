@@ -33,6 +33,8 @@ const builder = new addonBuilder(manifest);
 
 const BASE_URL = "https://phumikhmer.vip";
 
+const URL_TO_POSTID = new Map(); // seriesUrl -> postId
+
 const POST_INFO = new Map(); // postId -> { maxEp?: number }
 
 const BLOG_IDS = {
@@ -85,9 +87,14 @@ function extractVideoLinks(text) {
 }
 
 async function getPostId(url) {
+  if (URL_TO_POSTID.has(url)) return URL_TO_POSTID.get(url);
+
   const { data } = await axiosClient.get(url);
   const $ = cheerio.load(data);
-  return $("div#player").attr("data-post-id") || null;
+  const postId = $("div#player").attr("data-post-id") || null;
+
+  if (postId) URL_TO_POSTID.set(url, postId);
+  return postId;
 }
 
 /* =========================
@@ -179,7 +186,6 @@ async function getEpisodes(postId, source) {
   const detail = await getStreamDetail(postId);
   if (!detail) return [];
 
-  // Dedupe while preserving order
   const seen = new Set();
   let urls = [];
   for (const u of detail.urls) {
@@ -189,14 +195,13 @@ async function getEpisodes(postId, source) {
     }
   }
 
-  // Cap to the episode count shown on the site (from catalog title like "EP 76")
   const maxEp = getMaxEpFromSeriesPage(postId);
   if (maxEp && urls.length > maxEp) {
     urls = urls.slice(0, maxEp);
   }
 
   return urls.map((url, index) => ({
-    id: `${source}:${postId}:${index + 1}`,
+    id: `${source}:${postId}:1:${index + 1}`, 
     title: detail.title,
     season: 1,
     episode: index + 1,
@@ -214,37 +219,49 @@ async function getItems(url) {
 
   const articles = $("article").toArray();
 
-  const results = articles.map((el) => {
-    const $el = $(el);
-    const a = $el.find("h2 a, h3 a").first();
+  const results = await Promise.all(
+    articles.map(async (el) => {
+      const $el = $(el);
+      const a = $el.find("h2 a, h3 a").first();
 
-    const title = a.text().trim();
-    const link = a.attr("href");
-    if (!title || !link) return null;
+      const title = a.text().trim();
+      const link = a.attr("href");
+      if (!title || !link) return null;
 
-    const epMatch =
-      title.match(/\bEP\.?\s*(\d+)\b/i) ||
-      title.match(/\bEpisode\s*(\d+)\b/i) ||
-      title.match(/\[EP\.?\s*(\d+)\]/i);
+      const epMatch =
+        title.match(/\bEP\.?\s*(\d+)\b/i) ||
+        title.match(/\bEpisode\s*(\d+)\b/i) ||
+        title.match(/\[EP\.?\s*(\d+)\]/i);
 
-    const maxEp = epMatch ? parseInt(epMatch[1], 10) : null;
+      const maxEp = epMatch ? parseInt(epMatch[1], 10) : null;
 
-    const poster =
-      $el.find("a.img-holder").attr("data-src") ||
-      $el.find("a.img-holder").attr("data-bsrjs") ||
-      "";
+      const poster =
+        $el.find("a.img-holder").attr("data-src") ||
+        $el.find("a.img-holder").attr("data-bsrjs") ||
+        "";
 
-    // Optional: store maxEp temporarily using URL as key
-    if (maxEp) {
-      POST_INFO.set(link, { maxEp });
-    }
+      // Resolve postId NOW
+      const postId = await getPostId(link);
+      if (!postId) return null;
 
-    return {
-      id: link,
-      name: title,
-      poster: normalizePoster(poster),
-    };
-  });
+      // Cache mapping
+      URL_TO_POSTID.set(link, postId);
+
+      // Store maxEp using postId (not link)
+      if (maxEp) {
+        POST_INFO.set(postId, {
+          ...(POST_INFO.get(postId) || {}),
+          maxEp,
+        });
+      }
+
+      return {
+        id: `vip:${postId}`,
+        name: title,
+        poster: normalizePoster(poster),
+      };
+    })
+  );
 
   return results.filter(Boolean);
 }
@@ -342,31 +359,24 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 ========================= */
 builder.defineMetaHandler(async ({ id }) => {
   try {
-    // id is now the series URL
-    const seriesUrl = id;
+    // id is now like: "vip:123456789"
+    const parts = id.split(":");
+    const prefix = parts[0];
+    const postId = parts[1];
 
-    // Get Blogger postId from the series page
-    const postId = await getPostId(seriesUrl);
     if (!postId) return { meta: null };
 
-    // If catalog stored maxEp using URL, copy it to postId key
-    if (POST_INFO.has(seriesUrl)) {
-	  const cached = POST_INFO.get(seriesUrl);
-      if (cached?.maxEp) {
-		POST_INFO.set(postId, { ...POST_INFO.get(postId), maxEp: cached.maxEp });
-	  }
-    }
+    // source is now determined by prefix
+    const source = prefix;
 
-    // detect source from URL
-    const source = seriesUrl.includes("idramahd") ? "idrama" : "vip";
-	const episodes = await getEpisodes(postId, source);
+    const episodes = await getEpisodes(postId, source);
     if (!episodes.length) return { meta: null };
 
     const first = episodes[0];
 
     return {
       meta: {
-        id: seriesUrl, // keep URL as ID
+        id: `vip:${postId}`,  // consistent prefix ID
         type: "series",
         name: first.title,
         poster: first.thumbnail,
@@ -413,7 +423,7 @@ builder.defineStreamHandler(async ({ id }) => {
   try {
     const parts = id.split(":");
     const postId = parts[1];
-    const episode = parseInt(parts[2], 10);
+    const episode = parseInt(parts[3], 10)
 
     const detail = await getStreamDetail(postId);
     if (!detail) return { streams: [] };
