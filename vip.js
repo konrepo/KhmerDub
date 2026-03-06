@@ -276,12 +276,9 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
     const page = Math.floor(skip / pageSize) + 1;
 
     let url;
+    let items = [];
 
-    // =========================
-    // VIP
-    // =========================
     if (id === "vip") {
-
       if (extra?.search) {
         url = `${BASE_URL}/?s=${encodeURIComponent(extra.search)}`;
       } else {
@@ -290,48 +287,34 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
           : `${BASE_URL}/page/${page}/`;
       }
 
-      const items = await getItems(url);
-
-      return {
-        metas: items.map(item => ({
-          id: item.id,
-          type: "series",
-          name: item.name,
-          poster: item.poster,
-          posterShape: "poster"
-        }))
-      };
+      items = await getItems(url);
     }
 
-    // =========================
-    // IDRAMA
-    // =========================
-    if (id === "idrama") {
+    else if (id === "idrama") {
+      const IDRAMA_BASE = "https://www.idramahd.com";
 
       if (extra?.search) {
-        url = `https://www.idramahd.com/?s=${encodeURIComponent(extra.search)}`;
+        url = `${IDRAMA_BASE}/?s=${encodeURIComponent(extra.search)}`;
       } else {
         url = page === 1
-          ? "https://www.idramahd.com/"
-          : `https://www.idramahd.com/page/${page}/`;
+          ? IDRAMA_BASE
+          : `${IDRAMA_BASE}/page/${page}/`;
       }
 
-      const items = await getIdramaItems(url);
-
-      return {
-        metas: items.map(item => ({
-          id: item.id,
-          type: "series",
-          name: item.name,
-          poster: item.poster,
-          posterShape: "poster"
-        }))
-      };
+      items = await getIdramaItems(url);
     }
 
-    return { metas: [] };
+    return {
+      metas: items.map(item => ({
+        id: item.id,
+        type: "series",
+        name: item.name,
+        poster: item.poster,
+        posterShape: "poster"
+      }))
+    };
 
-  } catch (err) {
+  } catch {
     return { metas: [] };
   }
 });
