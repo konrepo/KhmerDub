@@ -275,28 +275,34 @@ async function getIdramaItems(url) {
 
   const articles = $("article.hitmag-post").toArray();
 
-  const results = articles.map((el) => {
-    const $el = $(el);
-    const a = $el.find("h3.entry-title a").first();
-    if (!a.length) return null;
+  const results = await Promise.all(
+    articles.map(async (el) => {
+      const $el = $(el);
+      const a = $el.find("h3.entry-title a").first();
+      if (!a.length) return null;
 
-    const title = a.text().trim();
-    const link = a.attr("href");
+      const title = a.text().trim();
+      const link = a.attr("href");
 
-    const img = $el.find(".archive-thumb img").first();
-    const poster =
-      img.attr("data-src") ||
-      img.attr("src") ||
-      "";
+      const img = $el.find(".archive-thumb img").first();
+      const poster =
+        img.attr("data-src") ||
+        img.attr("src") ||
+        "";
 
-    if (!title || !link) return null;
+      if (!title || !link) return null;
 
-    return {
-      id: link,
-      name: title,
-      poster: normalizePoster(poster),
-    };
-  });
+      // Extract postId once
+      const postId = await getPostId(link);
+      if (!postId) return null;
+
+      return {
+        id: `idrama:${postId}`,
+        name: title,
+        poster: normalizePoster(poster),
+      };
+    })
+  );
 
   return results.filter(Boolean);
 }
@@ -359,24 +365,22 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 ========================= */
 builder.defineMetaHandler(async ({ id }) => {
   try {
-    // id is now like: "vip:123456789"
     const parts = id.split(":");
     const prefix = parts[0];
     const postId = parts[1];
 
-    if (!postId) return { meta: null };
+    if (!prefix || !postId) {
+      return { meta: null };
+    }
 
-    // source is now determined by prefix
-    const source = prefix;
-
-    const episodes = await getEpisodes(postId, source);
+    const episodes = await getEpisodes(postId, prefix);
     if (!episodes.length) return { meta: null };
 
     const first = episodes[0];
 
     return {
       meta: {
-        id: `vip:${postId}`,  // consistent prefix ID
+        id: `${prefix}:${postId}`,
         type: "series",
         name: first.title,
         poster: first.thumbnail,
@@ -384,7 +388,8 @@ builder.defineMetaHandler(async ({ id }) => {
         videos: episodes,
       },
     };
-  } catch (err) {
+
+  } catch {
     return { meta: null };
   }
 });
