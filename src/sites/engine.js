@@ -1,8 +1,11 @@
 const cheerio = require("cheerio");
 const axiosClient = require("../utils/fetch");
 const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle } = require("../utils/helpers");
-const { URL_TO_POSTID, POST_INFO, BLOG_IDS, getMaxEpFromSeriesPage } = require("../utils/cache");
+const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 
+/* =========================
+   GET POST ID
+========================= */
 async function getPostId(url) {
   if (URL_TO_POSTID.has(url)) return URL_TO_POSTID.get(url);
 
@@ -14,6 +17,9 @@ async function getPostId(url) {
   return postId;
 }
 
+/* =========================
+   BLOGGER FETCH
+========================= */
 async function fetchFromBlog(blogId, postId) {
   const feedUrl = `https://www.blogger.com/feeds/${blogId}/posts/default/${postId}?alt=json`;
 
@@ -42,6 +48,9 @@ async function fetchFromBlog(blogId, postId) {
   }
 }
 
+/* =========================
+   STREAM DETAIL
+========================= */
 async function getStreamDetail(postId) {
   const cached = POST_INFO.get(postId);
   if (cached?.detail) return cached.detail;
@@ -53,15 +62,23 @@ async function getStreamDetail(postId) {
       return detail;
     }
   }
+
   return null;
 }
 
-async function getEpisodes(prefix, postId) {
+/* =========================
+   EPISODES
+========================= */
+async function getEpisodes(prefix, seriesUrl) {
+  const postId = await getPostId(seriesUrl);
+  if (!postId) return [];
+
   const detail = await getStreamDetail(postId);
   if (!detail) return [];
 
   const seen = new Set();
   let urls = [];
+
   for (const u of detail.urls) {
     if (!seen.has(u)) {
       seen.add(u);
@@ -69,11 +86,13 @@ async function getEpisodes(prefix, postId) {
     }
   }
 
-  const maxEp = getMaxEpFromSeriesPage(postId);
-  if (maxEp && urls.length > maxEp) urls = urls.slice(0, maxEp);
+  const maxEp = POST_INFO.get(postId)?.maxEp || null;
+  if (maxEp && urls.length > maxEp) {
+    urls = urls.slice(0, maxEp);
+  }
 
   return urls.map((url, index) => ({
-    id: `${prefix}:${postId}:1:${index + 1}`,
+    id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
     title: detail.title,
     season: 1,
     episode: index + 1,
@@ -82,6 +101,9 @@ async function getEpisodes(prefix, postId) {
   }));
 }
 
+/* =========================
+   PLAYER RESOLVE
+========================= */
 async function resolvePlayerUrl(playerUrl) {
   try {
     const { data } = await axiosClient.get(playerUrl);
@@ -100,7 +122,13 @@ async function resolvePlayerUrl(playerUrl) {
   }
 }
 
-async function getStream(prefix, postId, episode) {
+/* =========================
+   STREAM
+========================= */
+async function getStream(prefix, seriesUrl, episode) {
+  const postId = await getPostId(seriesUrl);
+  if (!postId) return null;
+
   const detail = await getStreamDetail(postId);
   if (!detail) return null;
 
@@ -122,6 +150,9 @@ async function getStream(prefix, postId, episode) {
   };
 }
 
+/* =========================
+   CATALOG
+========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   const { data } = await axiosClient.get(url);
   const $ = cheerio.load(data);
@@ -144,19 +175,17 @@ async function getCatalogItems(prefix, siteConfig, url) {
         if (poster) break;
       }
 
-      const postId = await getPostId(link);
-      if (!postId) return null;
-	  
-	  const maxEp = extractMaxEpFromTitle(title);
-	  if (maxEp) {
-		POST_INFO.set(postId, {
-		  ...(POST_INFO.get(postId) || {}),
-		  maxEp,
-		});
-	}
+      // Only extract maxEp from title (no postId fetch here)
+      const maxEp = extractMaxEpFromTitle(title);
+      if (maxEp) {
+        POST_INFO.set(link, {
+          ...(POST_INFO.get(link) || {}),
+          maxEp,
+        });
+      }
 
       return {
-        id: `${prefix}:${postId}`,
+        id: `${prefix}:${encodeURIComponent(link)}`,
         name: title,
         poster: normalizePoster(poster),
       };

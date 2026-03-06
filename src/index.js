@@ -45,17 +45,19 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 ========================= */
 builder.defineMetaHandler(async ({ id }) => {
   try {
-    const [prefix, postId] = id.split(":");
+    const [prefix, encodedUrl] = id.split(":");
     if (!sites[prefix]) return { meta: null };
 
-    const episodes = await engine.getEpisodes(prefix, postId);
+    const seriesUrl = decodeURIComponent(encodedUrl);
+
+    const episodes = await engine.getEpisodes(prefix, seriesUrl);
     if (!episodes.length) return { meta: null };
 
     const first = episodes[0];
 
     return {
       meta: {
-        id: `${prefix}:${postId}`,
+        id: `${prefix}:${encodedUrl}`,
         type: "series",
         name: first.title,
         poster: first.thumbnail,
@@ -63,7 +65,6 @@ builder.defineMetaHandler(async ({ id }) => {
         videos: episodes,
       },
     };
-
   } catch {
     return { meta: null };
   }
@@ -76,12 +77,13 @@ builder.defineStreamHandler(async ({ id }) => {
   try {
     const parts = id.split(":");
 
-    let prefix, postId, episode;
+    let prefix, encodedUrl, episode;
+
     if (parts.length === 3) {
-      [prefix, postId, episode] = parts;
+      [prefix, encodedUrl, episode] = parts;
     } else if (parts.length === 4) {
       prefix = parts[0];
-      postId = parts[1];
+      encodedUrl = parts[1];
       episode = parts[3];
     } else {
       return { streams: [] };
@@ -94,7 +96,9 @@ builder.defineStreamHandler(async ({ id }) => {
       return { streams: [] };
     }
 
-    const stream = await engine.getStream(prefix, postId, epNum);
+    const seriesUrl = decodeURIComponent(encodedUrl);
+
+    const stream = await engine.getStream(prefix, seriesUrl, epNum);
     if (!stream) return { streams: [] };
 
     return { streams: [stream] };
