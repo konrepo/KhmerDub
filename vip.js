@@ -111,16 +111,16 @@ async function fetchFromBlog(blogId, postId) {
 
     // Extract largest blogger image from content
     let thumbnail = "";
-    const imgMatch = content.match(
-      /https?:\/\/blogger\.googleusercontent\.com[^"']+/
-    );
 
-    if (imgMatch) {
-      thumbnail = imgMatch[0];
-    } else {
+    // Try extracting first image from content
+    const $content = cheerio.load(content);
+    thumbnail = $content("img").first().attr("src") || "";
+
+    // Fallback to blogger thumbnail if no image found
+    if (!thumbnail) {
       thumbnail = data.entry.media$thumbnail?.url || "";
     }
-
+	
     const urls = extractVideoLinks(content);
     if (!urls.length) return null;
 
