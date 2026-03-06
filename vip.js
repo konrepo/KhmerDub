@@ -308,6 +308,8 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
   try {
     const PAGE_SIZE = 30;
     const skip = Number(extra?.skip || 0);
+
+    // Convert offset to WordPress page number
     const page = Math.floor(skip / PAGE_SIZE) + 1;
 
     let url;
@@ -317,9 +319,9 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       if (extra?.search) {
         url = `${BASE_URL}/?s=${encodeURIComponent(extra.search)}`;
       } else {
-        url = wpPage === 1
+        url = page === 1
           ? BASE_URL
-          : `${BASE_URL}/page/${wpPage}/`;
+          : `${BASE_URL}/page/${page}/`;
       }
 
       items = await getItems(url);
@@ -331,27 +333,23 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       if (extra?.search) {
         url = `${IDRAMA_BASE}/?s=${encodeURIComponent(extra.search)}`;
       } else {
-        url = wpPage === 1
+        url = page === 1
           ? IDRAMA_BASE
-          : `${IDRAMA_BASE}/page/${wpPage}/`;
+          : `${IDRAMA_BASE}/page/${page}/`;
       }
 
       items = await getIdramaItems(url);
     }
 
-    // Now slice relative to skip
-    const startIndex = skip % PAGE_SIZE;
-    const metas = items
-      .slice(startIndex, startIndex + PAGE_SIZE)
-      .map(item => ({
+    return {
+      metas: items.map(item => ({
         id: item.id,
         type: "series",
         name: item.name,
         poster: item.poster,
         posterShape: "poster"
-      }));
-
-    return { metas };
+      }))
+    };
 
   } catch (err) {
     console.error("Catalog error:", err);
