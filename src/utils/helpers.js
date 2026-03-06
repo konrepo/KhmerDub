@@ -26,7 +26,19 @@ function extractVideoLinks(text) {
   ]));
 }
 
+function extractMaxEpFromTitle(title) {
+  if (!title) return null;
+
+  const match =
+    title.match(/\bEP\.?\s*(\d+)\b/i) ||
+    title.match(/\bEpisode\s*(\d+)\b/i) ||
+    title.match(/\[EP\.?\s*(\d+)\]/i);
+
+  return match ? parseInt(match[1], 10) : null;
+}
+
 module.exports = {
   normalizePoster,
-  extractVideoLinks
+  extractVideoLinks,
+  extractMaxEpFromTitle
 };

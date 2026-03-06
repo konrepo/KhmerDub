@@ -1,6 +1,6 @@
 const cheerio = require("cheerio");
 const axiosClient = require("../utils/fetch");
-const { normalizePoster, extractVideoLinks } = require("../utils/helpers");
+const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle } = require("../utils/helpers");
 const { URL_TO_POSTID, POST_INFO, BLOG_IDS, getMaxEpFromSeriesPage } = require("../utils/cache");
 
 async function getPostId(url) {
@@ -146,6 +146,14 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
       const postId = await getPostId(link);
       if (!postId) return null;
+	  
+	  const maxEp = extractMaxEpFromTitle(title);
+	  if (maxEp) {
+		POST_INFO.set(postId, {
+		  ...(POST_INFO.get(postId) || {}),
+		  maxEp,
+		});
+	}
 
       return {
         id: `${prefix}:${postId}`,
