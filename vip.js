@@ -308,9 +308,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
   try {
     const PAGE_SIZE = 30;
     const skip = Number(extra?.skip || 0);
-
-    // Determine which WP page we need
-    const wpPage = Math.floor(skip / PAGE_SIZE) + 1;
+    const page = Math.floor(skip / PAGE_SIZE) + 1;
 
     let url;
     let items = [];
