@@ -109,24 +109,36 @@ async function fetchFromBlog(blogId, postId) {
 
     const content = data.entry.content?.$t || "";
 
-    // Extract largest blogger image from content
+    // Extract thumbnail from content
     let thumbnail = "";
 
-    // Try extracting first image from content
+    // Try og:image inside content
     const $content = cheerio.load(content);
-    thumbnail = $content("img").first().attr("src") || "";
 
-    // Fallback to blogger thumbnail if no image found
+    thumbnail =
+      $content('meta[property="og:image"]').attr("content") ||
+      $content('meta[name="twitter:image"]').attr("content") ||
+      "";
+
+    // Fallback to first image inside content
+    if (!thumbnail) {
+      thumbnail = $content("img").first().attr("src") || "";
+    }
+
+    // Fallback to Blogger thumbnail
     if (!thumbnail) {
       thumbnail = data.entry.media$thumbnail?.url || "";
     }
-	
+
+    // Clean & normalize once
+    thumbnail = normalizePoster(thumbnail);
+
     const urls = extractVideoLinks(content);
     if (!urls.length) return null;
 
     return {
       title,
-      thumbnail: normalizePoster(thumbnail),
+      thumbnail,
       year,
       urls,
     };
