@@ -421,42 +421,41 @@ async function resolvePlayerUrl(playerUrl) {
 ========================= */
 builder.defineStreamHandler(async ({ id }) => {
   try {
-    const parts = id.split(":");
-    const postId = parts[1];
-    const episode = parseInt(parts[3], 10)
+    console.log("STREAM ID RECEIVED:", id);
+	const parts = id.split(":");
+
+    let postId, season, episode;
+
+    if (parts.length === 4) {
+      // vip:postId:season:episode
+      [ , postId, season, episode ] = parts;
+    } else if (parts.length === 3) {
+      // possibly metaId:season:episode
+      [ postId, season, episode ] = parts;
+    } else {
+      return { streams: [] };
+    }
+
+    const epNum = parseInt(episode, 10);
+    if (isNaN(epNum)) return { streams: [] };
 
     const detail = await getStreamDetail(postId);
     if (!detail) return { streams: [] };
 
-    let url = detail.urls[episode - 1];
-    if (!url) {
-      return { streams: [] };
-    }
-
-    // If it's player.php, resolve real m3u8
-    if (url.includes("player.php")) {
-      const resolved = await resolvePlayerUrl(url);
-      if (resolved) {
-        url = resolved;
-      } else {
-        return { streams: [] };
-      }
-    }
+    const url = detail.urls[epNum - 1];
+    if (!url) return { streams: [] };
 
     return {
       streams: [
         {
           url,
           name: "KhmerDub",
-          title: `Episode ${episode}`,
-          behaviorHints: {
-            notWebReady: true,
-            group: "khmerdub",
-          },
+          title: `Episode ${epNum}`,
+          type: url.includes(".m3u8") ? "hls" : "direct",
         },
       ],
     };
-  } catch {
+  } catch (e) {
     return { streams: [] };
   }
 });
