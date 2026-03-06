@@ -49,10 +49,7 @@ const axiosClient = axios.create({
   timeout: 15000,
 });
 
-async function getMaxEpFromSeriesPage(postId) {
-  // Find the series URL from the catalog cache, if we have it
-  // If not available, we can't fetch (because we only have postId).
-  // So we return null and fall back to POST_INFO.
+function getMaxEpFromSeriesPage(postId) {
   return POST_INFO.get(postId)?.maxEp || null;
 }
 
@@ -147,6 +144,9 @@ async function fetchFromBlog(blogId, postId) {
   }
 }
 
+/* =========================
+   BLOGGER DETAIL RESOLVER
+========================= */
 async function getStreamDetail(postId) {
   for (const blogId of Object.values(BLOG_IDS)) {
     const detail = await fetchFromBlog(blogId, postId);
@@ -155,6 +155,39 @@ async function getStreamDetail(postId) {
     }
   }
   return null;
+}
+
+/* =========================
+   EPISODES
+========================= */
+async function getEpisodes(postId, source) {
+  const detail = await getStreamDetail(postId);
+  if (!detail) return [];
+
+  // Dedupe while preserving order
+  const seen = new Set();
+  let urls = [];
+  for (const u of detail.urls) {
+    if (!seen.has(u)) {
+      seen.add(u);
+      urls.push(u);
+    }
+  }
+
+  // Cap to the episode count shown on the site (from catalog title like "EP 76")
+  const maxEp = getMaxEpFromSeriesPage(postId);
+  if (maxEp && urls.length > maxEp) {
+    urls = urls.slice(0, maxEp);
+  }
+
+  return urls.map((url, index) => ({
+    id: `${source}:${postId}:${index + 1}`,
+    title: detail.title,
+    season: 1,
+    episode: index + 1,
+    thumbnail: detail.thumbnail,
+    released: new Date().toISOString(),
+  }));
 }
 
 /* =========================
@@ -199,36 +232,6 @@ async function getItems(url) {
   });
 
   return results.filter(Boolean);
-}
-
-async function getEpisodes(postId) {
-  const detail = await getStreamDetail(postId);
-  if (!detail) return [];
-
-  // Dedupe while preserving order
-  const seen = new Set();
-  let urls = [];
-  for (const u of detail.urls) {
-    if (!seen.has(u)) {
-      seen.add(u);
-      urls.push(u);
-    }
-  }
-
-  // Cap to the episode count shown on the site (from catalog title like "EP 76")
-  const maxEp = await getMaxEpFromSeriesPage(postId);
-  if (maxEp && urls.length > maxEp) {
-    urls = urls.slice(0, maxEp);
-  }
-
-  return urls.map((url, index) => ({
-    id: `vip:${postId}:${index + 1}`,
-    title: detail.title,
-    season: 1,
-    episode: index + 1,
-    thumbnail: normalizePoster(detail.thumbnail),
-    released: new Date().toISOString(),
-  }));
 }
 
 /* =========================
@@ -331,8 +334,17 @@ builder.defineMetaHandler(async ({ id }) => {
     const postId = await getPostId(seriesUrl);
     if (!postId) return { meta: null };
 
-    // Get episodes using Blogger postId
-    const episodes = await getEpisodes(postId);
+    // If catalog stored maxEp using URL, copy it to postId key
+    if (POST_INFO.has(seriesUrl)) {
+	  const cached = POST_INFO.get(seriesUrl);
+      if (cached?.maxEp) {
+		POST_INFO.set(postId, { ...POST_INFO.get(postId), maxEp: cached.maxEp });
+	  }
+    }
+
+    // detect source from URL
+    const source = seriesUrl.includes("idramahd") ? "idrama" : "vip";
+	const episodes = await getEpisodes(postId, source);
     if (!episodes.length) return { meta: null };
 
     const first = episodes[0];
@@ -386,7 +398,7 @@ builder.defineStreamHandler(async ({ id }) => {
   try {
     const parts = id.split(":");
     const postId = parts[1];
-    const episode = parseInt(parts[2]);
+    const episode = parseInt(parts[2], 10);
 
     const detail = await getStreamDetail(postId);
     if (!detail) return { streams: [] };
@@ -430,7 +442,6 @@ builder.defineStreamHandler(async ({ id }) => {
 serveHTTP(builder.getInterface(), {
   port: process.env.PORT || 7000,
 });
-
 
 console.log("Khmer VIP Addon running");
 
