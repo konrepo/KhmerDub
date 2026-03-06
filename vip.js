@@ -148,12 +148,27 @@ async function fetchFromBlog(blogId, postId) {
    BLOGGER DETAIL RESOLVER
 ========================= */
 async function getStreamDetail(postId) {
+  //  Check cache first
+  const cached = POST_INFO.get(postId);
+  if (cached?.detail) {
+    return cached.detail;
+  }
+
+  // Fetch from blogs
   for (const blogId of Object.values(BLOG_IDS)) {
     const detail = await fetchFromBlog(blogId, postId);
     if (detail) {
+
+      // Save to cache
+      POST_INFO.set(postId, {
+        ...(POST_INFO.get(postId) || {}),
+        detail
+      });
+
       return detail;
     }
   }
+
   return null;
 }
 
