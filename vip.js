@@ -306,11 +306,9 @@ async function getIdramaItems(url) {
 ========================= */
 builder.defineCatalogHandler(async ({ id, extra }) => {
   try {
-    const PAGE_SIZE = 30;
+    const pageSize = 30;
     const skip = Number(extra?.skip || 0);
-
-    // Determine which WordPress page to load
-    const page = Math.floor(skip / PAGE_SIZE) + 1;
+    const page = Math.floor(skip / pageSize) + 1;
 
     let url;
     let items = [];
@@ -341,23 +339,17 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       items = await getIdramaItems(url);
     }
 
-    // Now adjust within-page offset
-    const offsetInsidePage = skip % PAGE_SIZE;
-
-    const metas = items
-      .slice(offsetInsidePage, offsetInsidePage + PAGE_SIZE)
-      .map(item => ({
+    return {
+      metas: items.map(item => ({
         id: item.id,
         type: "series",
         name: item.name,
         poster: item.poster,
         posterShape: "poster"
-      }));
+      }))
+    };
 
-    return { metas };
-
-  } catch (err) {
-    console.error("Catalog error:", err);
+  } catch {
     return { metas: [] };
   }
 });
