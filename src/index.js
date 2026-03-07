@@ -45,7 +45,12 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 ========================= */
 builder.defineMetaHandler(async ({ id }) => {
   try {
-    const [prefix, encodedUrl] = id.split(":");
+    const firstColon = id.indexOf(":");
+    if (firstColon === -1) return { meta: null };
+
+    const prefix = id.slice(0, firstColon);
+    const encodedUrl = id.slice(firstColon + 1);
+
     if (!sites[prefix]) return { meta: null };
 
     const seriesUrl = decodeURIComponent(encodedUrl);
@@ -57,7 +62,7 @@ builder.defineMetaHandler(async ({ id }) => {
 
     return {
       meta: {
-        id: `${prefix}:${encodedUrl}`,
+        id,
         type: "series",
         name: first.title,
         poster: first.thumbnail,
@@ -65,7 +70,7 @@ builder.defineMetaHandler(async ({ id }) => {
         videos: episodes,
       },
     };
-  } catch {
+  } catch (err) {
     return { meta: null };
   }
 });

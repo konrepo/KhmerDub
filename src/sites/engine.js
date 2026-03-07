@@ -11,9 +11,25 @@ async function getPostId(url) {
 
   const { data } = await axiosClient.get(url);
   const $ = cheerio.load(data);
+
   const postId = $("div#player").attr("data-post-id") || null;
 
-  if (postId) URL_TO_POSTID.set(url, postId);
+  // Extract max EP from page title
+  const pageTitle = $("title").text();
+  const maxEpMatch = pageTitle.match(/\[EP\s*(\d+)\]/i);
+  const maxEp = maxEpMatch ? parseInt(maxEpMatch[1], 10) : null;
+
+  if (postId) {
+    URL_TO_POSTID.set(url, postId);
+
+    if (maxEp) {
+      POST_INFO.set(postId, {
+        ...(POST_INFO.get(postId) || {}),
+        maxEp,
+      });
+    }
+  }
+
   return postId;
 }
 
@@ -71,10 +87,18 @@ async function getStreamDetail(postId) {
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
-  if (!postId) return [];
+
+  if (!postId) {
+    return [];
+  }
 
   const detail = await getStreamDetail(postId);
-  if (!detail) return [];
+
+  if (!detail) {
+    return [];
+  }
+
+  const maxEp = POST_INFO.get(postId)?.maxEp || null;
 
   const seen = new Set();
   let urls = [];
@@ -86,7 +110,6 @@ async function getEpisodes(prefix, seriesUrl) {
     }
   }
 
-  const maxEp = POST_INFO.get(postId)?.maxEp || null;
   if (maxEp && urls.length > maxEp) {
     urls = urls.slice(0, maxEp);
   }
@@ -173,15 +196,6 @@ async function getCatalogItems(prefix, siteConfig, url) {
       for (const attr of siteConfig.posterAttrs) {
         poster = posterEl.attr(attr) || poster;
         if (poster) break;
-      }
-
-      // Only extract maxEp from title (no postId fetch here)
-      const maxEp = extractMaxEpFromTitle(title);
-      if (maxEp) {
-        POST_INFO.set(link, {
-          ...(POST_INFO.get(link) || {}),
-          maxEp,
-        });
       }
 
       return {
