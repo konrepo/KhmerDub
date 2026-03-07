@@ -14,4 +14,12 @@ module.exports = {
     posterSelector: ".archive-thumb img",
     posterAttrs: ["data-src", "src"],
   },
+
+  khmerave: {
+    baseUrl: "https://www.khmeravenue.com/album"
+  },
+
+  merlkon: {
+    baseUrl: "https://www.khmerdrama.com/album"
+  }
 };

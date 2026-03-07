@@ -2,7 +2,15 @@ const { addonBuilder, serveHTTP } = require("stremio-addon-sdk");
 const manifest = require("./manifest");
 
 const engine = require("./sites/engine");
+const khmerave = require("./sites/khmerave");
 const sites = require("./sites/config");
+
+const ENGINES = {
+  vip: engine,
+  idrama: engine,
+  khmerave: khmerave,
+  merlkon: khmerave
+};
 
 const builder = new addonBuilder(manifest);
 
@@ -23,8 +31,11 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       : page === 1
       ? site.baseUrl
       : `${site.baseUrl}/page/${page}/`;
+	  
+    const siteEngine = ENGINES[id];
+    if (!siteEngine) return { metas: [] };	  
 
-    const items = await engine.getCatalogItems(id, site, url);
+    const items = await siteEngine.getCatalogItems(id, site, url);
 
     return {
       metas: items.map((item) => ({
@@ -55,7 +66,10 @@ builder.defineMetaHandler(async ({ id }) => {
 
     const seriesUrl = decodeURIComponent(encodedUrl);
 
-    const episodes = await engine.getEpisodes(prefix, seriesUrl);
+    const siteEngine = ENGINES[prefix];
+    if (!siteEngine) return { meta: null };
+
+    const episodes = await siteEngine.getEpisodes(prefix, seriesUrl);
     if (!episodes.length) return { meta: null };
 
     const first = episodes[0];
@@ -103,7 +117,10 @@ builder.defineStreamHandler(async ({ id }) => {
 
     const seriesUrl = decodeURIComponent(encodedUrl);
 
-    const stream = await engine.getStream(prefix, seriesUrl, epNum);
+    const siteEngine = ENGINES[prefix];
+    if (!siteEngine) return { streams: [] };
+
+    const stream = await siteEngine.getStream(prefix, seriesUrl, epNum);
     if (!stream) return { streams: [] };
 
     return { streams: [stream] };
