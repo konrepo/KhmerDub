@@ -5,6 +5,7 @@ module.exports = {
     titleSelector: "h2 a, h3 a",
     posterSelector: "a.img-holder",
     posterAttrs: ["data-src", "data-bsrjs"],
+	pageSize: 30
   },
 
   idrama: {
@@ -13,13 +14,16 @@ module.exports = {
     titleSelector: "h3.entry-title a",
     posterSelector: ".archive-thumb img",
     posterAttrs: ["data-src", "src"],
+	pageSize: 30
   },
 
   khmerave: {
-    baseUrl: "https://www.khmeravenue.com/album"
+    baseUrl: "https://www.khmeravenue.com/album/",
+	pageSize: 18
   },
 
   merlkon: {
-    baseUrl: "https://www.khmerdrama.com/album"
+    baseUrl: "https://www.khmerdrama.com/album/",
+	pageSize: 18
   }
 };

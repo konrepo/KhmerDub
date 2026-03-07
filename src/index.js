@@ -19,7 +19,7 @@ const builder = new addonBuilder(manifest);
 ========================= */
 builder.defineCatalogHandler(async ({ id, extra }) => {
   try {
-    const pageSize = 30;
+    const pageSize = site.pageSize || 30;
     const skip = Number(extra?.skip || 0);
     const page = Math.floor(skip / pageSize) + 1;
 
