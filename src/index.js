@@ -48,7 +48,7 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
       };
     }
 
-    // KhmerAve / Merlkon: batch paging
+    // KhmerAve / Merlkon: paging
     if (id === "khmerave" || id === "merlkon") {
 
       const WEBSITE_PAGE_SIZE = site.pageSize || 18;
@@ -71,7 +71,6 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         allItems = allItems.concat(pageItems);
       }
 
-      // De-dup
       const uniq = [...new Map(allItems.map((x) => [x.id, x])).values()];
 
       return {

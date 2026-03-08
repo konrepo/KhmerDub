@@ -180,17 +180,9 @@ async function getCatalogItems(prefix, siteConfig, url) {
   try {
   const { data } = await axiosClient.get(url);
   
-    console.log("==========");
-    console.log("SITE:", prefix);
-    console.log("URL:", url);
-    console.log("HTML length:", data?.length);
-    console.log("First 300 chars:\n", data?.substring(0, 300));
-    console.log("==========");
-  
   const $ = cheerio.load(data);
 
   const articles = $(siteConfig.articleSelector).toArray();
-  console.log("Articles found:", articles.length);
 
   const results = await Promise.all(
     articles.map(async (el) => {
@@ -218,8 +210,7 @@ async function getCatalogItems(prefix, siteConfig, url) {
 
   return results.filter(Boolean);
   
-  } catch (e) {
-    console.error("SCRAPER ERROR:", e?.message || e);
+  } catch {;
     return [];
   }  
 }
