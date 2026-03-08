@@ -1,4 +1,3 @@
-// src/sites/khmerave.js
 const axios = require("axios");
 const cheerio = require("cheerio");
 
@@ -162,7 +161,10 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
     const okUrl = normalizeOkUrl(iframeUrl);
 
     const okRes = await axios.get(okUrl, {
-      headers: { "User-Agent": ua, Referer: "https://ok.ru/" },
+      headers: {
+        "User-Agent": ua,
+        Referer: "https://ok.ru/"
+      },
       timeout: 15000,
     });
 
@@ -182,12 +184,12 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
 
     for (const re of patterns) {
       const m = html.match(re);
-      if (m?.[1]) return m[1].replace(/\\&/g, "&");
+      if (m?.[1]) return m[1].replace(/\\u0026/g, "&");
     }
 
     return null;
   } catch (err) {
-    console.error("ok resolver error:", err.message);
+    console.error("ok resolver error:", err.response?.status || err.message);
     return null;
   }
 }
