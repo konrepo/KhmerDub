@@ -124,14 +124,23 @@ async function getEpisodes(prefix, seriesUrl) {
 /* =========================
    STREAM
 ========================= */
-
 function normalizeOkUrl(url) {
   if (!url) return url;
-  if (url.startsWith("//")) return "https:" + url;
-  return url;
+
+  let u = url.trim();
+
+  if (u.startsWith("//")) {
+    u = "https:" + u;
+  }
+
+  // Important: convert mobile domain
+  u = u.replace("m.ok.ru", "ok.ru");
+
+  return u;
 }
 
 function tryExtractVideoCandidateFromKhmerAvenue(html) {
+  // Base64 decode case
   const b64 = html.match(/Base64\.decode\("(.+?)"\)/i);
   if (b64?.[1]) {
     try {
@@ -141,11 +150,12 @@ function tryExtractVideoCandidateFromKhmerAvenue(html) {
     } catch {}
   }
 
+  // Standard patterns (covers options.player_list file:)
   const patterns = [
     /['"]?file['"]?\s*:\s*['"]([^'"]+)['"]/i,
     /<iframe[^>]*src=["']([^"']+)["']/i,
     /<source[^>]*src=["']([^"']+)["']/i,
-    /playlist:\s*["']([^"']+)["']/i,
+    /playlist:\s*["']([^"']+)["']/i
   ];
 
   for (const re of patterns) {
@@ -160,36 +170,62 @@ async function resolveOkRuToDirect(iframeUrl, ua) {
   try {
     const okUrl = normalizeOkUrl(iframeUrl);
 
+    console.log("OK Request:", okUrl);
+
     const okRes = await axios.get(okUrl, {
       headers: {
         "User-Agent": ua,
-        Referer: "https://ok.ru/"
+        "Referer": "https://ok.ru/"
       },
-      timeout: 15000,
+      timeout: 15000
     });
 
-    let html = String(okRes.data || "")
+    let html = okRes.data;
+    if (typeof html !== "string") {
+      html = String(html);
+    }
+
+    // Decode escaped content
+    html = html
       .replace(/\\&quot;/g, '"')
       .replace(/&quot;/g, '"')
       .replace(/\\u0026/g, "&")
+      .replace(/\\&/g, "&")
       .replace(/\\\//g, "/");
+
+    let match = null;
 
     const patterns = [
       /"ondemandHls"\s*:\s*"([^"]+)/,
       /"hlsMasterPlaylistUrl"\s*:\s*"([^"]+)/,
       /"hlsManifestUrl"\s*:\s*"([^"]+)/,
       /"metadataUrl"\s*:\s*"(https:[^"]+\.m3u8[^"]*)"/,
-      /"(https:[^"]+\.m3u8[^"]*)"/,
+      /"(https:[^"]+\.m3u8[^"]*)"/
     ];
 
     for (const re of patterns) {
       const m = html.match(re);
-      if (m?.[1]) return m[1].replace(/\\u0026/g, "&");
+      if (m && m[1]) {
+        match = m;
+        break;
+      }
     }
 
-    return null;
+    if (!match || !match[1]) {
+      console.log("No m3u8 found in OK page");
+      return null;
+    }
+
+    const cleanUrl = match[1]
+      .replace(/\\u0026/g, "&")
+      .replace(/\\&/g, "&");
+
+    console.log("Direct stream:", cleanUrl);
+
+    return cleanUrl;
+
   } catch (err) {
-    console.error("ok resolver error:", err.response?.status || err.message);
+    console.error("OK resolver error:", err.response?.status || err.message);
     return null;
   }
 }
