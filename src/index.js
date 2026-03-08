@@ -18,22 +18,85 @@ const builder = new addonBuilder(manifest);
    CATALOG
 ========================= */
 builder.defineCatalogHandler(async ({ id, extra }) => {
+
   try {
+    const site = sites[id];
+    if (!site) return { metas: [] };
+
+    const siteEngine = ENGINES[id];
+    if (!siteEngine) return { metas: [] };
+
+    // KhmerAve / Merlkon: search
+    if (extra?.search && (id === "khmerave" || id === "merlkon")) {
+
+      const keyword = encodeURIComponent(extra.search);
+
+      const url = id === "merlkon"
+        ? `https://www.khmerdrama.com/?s=${keyword}`
+        : `https://www.khmeravenue.com/?s=${keyword}`;
+
+      const items = await siteEngine.getCatalogItems(id, site, url);
+
+      return {
+        metas: items.map((item) => ({
+          id: item.id,
+          type: "series",
+          name: item.name,
+          poster: item.poster,
+          posterShape: "poster",
+        })),
+      };
+    }
+
+    // KhmerAve / Merlkon: batch paging
+    if (id === "khmerave" || id === "merlkon") {
+
+      const WEBSITE_PAGE_SIZE = site.pageSize || 18;
+      const PAGES_PER_BATCH = 3;
+
+      const skip = Number(extra?.skip || 0);
+      const startPage = Math.floor(skip / WEBSITE_PAGE_SIZE) + 1;
+
+      let allItems = [];
+
+      for (let p = startPage; p < startPage + PAGES_PER_BATCH; p++) {
+
+        const base = String(site.baseUrl || "").replace(/\/$/, "");
+
+        const url = p === 1
+          ? `${base}/`
+          : `${base}/page/${p}/`;
+
+        const pageItems = await siteEngine.getCatalogItems(id, site, url);
+        allItems = allItems.concat(pageItems);
+      }
+
+      // De-dup
+      const uniq = [...new Map(allItems.map((x) => [x.id, x])).values()];
+
+      return {
+        metas: uniq.map((item) => ({
+          id: item.id,
+          type: "series",
+          name: item.name,
+          poster: item.poster,
+          posterShape: "poster",
+        })),
+      };
+    }
+
+    // VIP / iDrama: normal paging
     const pageSize = site.pageSize || 30;
     const skip = Number(extra?.skip || 0);
     const page = Math.floor(skip / pageSize) + 1;
 
-    const site = sites[id];
-    if (!site) return { metas: [] };
+    const base = String(site.baseUrl || "").replace(/\/$/, "");
 
     const url = extra?.search
-      ? `${site.baseUrl}/?s=${encodeURIComponent(extra.search)}`
+      ? `${base}/?s=${encodeURIComponent(extra.search)}`
       : page === 1
-      ? site.baseUrl
-      : `${site.baseUrl}/page/${page}/`;
-	  
-    const siteEngine = ENGINES[id];
-    if (!siteEngine) return { metas: [] };	  
+        ? `${base}/`
+        : `${base}/page/${page}/`;
 
     const items = await siteEngine.getCatalogItems(id, site, url);
 
@@ -46,7 +109,9 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
         posterShape: "poster",
       })),
     };
-  } catch {
+
+  } catch (e) {
+    console.error("catalog error:", e?.message || e);
     return { metas: [] };
   }
 });
