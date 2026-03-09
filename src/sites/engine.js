@@ -187,9 +187,55 @@ async function getStream(prefix, seriesUrl, episode) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-  const { data } = await axiosClient.get(url);
+  const { data: pageData } = await axiosClient.get(currentUrl);
   
   const $ = cheerio.load(data);
+  
+  // === Sunday Blogger Pagination Support (ADD ONLY) ===
+  if (prefix === "sunday") {
+    const allItems = [];
+    let currentUrl = url;
+    const PAGES_PER_BATCH = 3;
+
+    for (let i = 0; i < PAGES_PER_BATCH && currentUrl; i++) {
+      const { data: pageData } = await axiosClient.get(currentUrl);
+      const $$ = cheerio.load(pageData);
+
+      const articles = $$(siteConfig.articleSelector).toArray();
+
+      for (const el of articles) {
+        const $el = $$(el);
+        const a = $el.find(siteConfig.titleSelector).first();
+
+        const title =
+          a.attr("title")?.trim() ||
+          a.text().trim();
+
+        const link = a.attr("href");
+        if (!title || !link) continue;
+
+        let poster = "";
+        const posterEl = $el.find(siteConfig.posterSelector).first();
+        for (const attr of siteConfig.posterAttrs) {
+          poster = posterEl.attr(attr) || poster;
+          if (poster) break;
+        }
+
+        allItems.push({
+          id: `${prefix}:${encodeURIComponent(link)}`,
+          name: title,
+          poster: normalizePoster(poster),
+        });
+      }
+
+      const older = $$("a.blog-pager-older-link").attr("href");
+      currentUrl = older || null;
+    }
+
+    return Array.from(
+      new Map(allItems.map(x => [x.id, x])).values()
+    );
+  }
 
   const articles = $(siteConfig.articleSelector).toArray();
 
