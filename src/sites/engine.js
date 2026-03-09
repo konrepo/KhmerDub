@@ -187,7 +187,7 @@ async function getStream(prefix, seriesUrl, episode) {
 ========================= */
 async function getCatalogItems(prefix, siteConfig, url) {
   try {
-  const { data: pageData } = await axiosClient.get(currentUrl);
+  const { data } = await axiosClient.get(url);
   
   const $ = cheerio.load(data);
   
