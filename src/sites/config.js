@@ -8,6 +8,15 @@ module.exports = {
 	pageSize: 30
   },
 
+  sunday: {
+    baseUrl: "https://www.sundaydrama.com",
+    articleSelector: "div.blog-posts div.entry-inner",
+    titleSelector: "a.entry-image-wrap",
+    posterSelector: "a.entry-image-wrap span, a.entry-image-wrap img",
+    posterAttrs: ["data-src", "src"],
+    pageSize: 30
+  },
+
   idrama: {
     baseUrl: "https://www.idramahd.com",
     articleSelector: "article.hitmag-post",

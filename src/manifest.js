@@ -15,6 +15,12 @@ module.exports = {
     },
     {
       type: "series",
+      id: "sunday",
+      name: "SundayDrama",
+      extraSupported: ["search", "skip"],
+    },	
+    {
+      type: "series",
       id: "idrama",
       name: "iDramaHD",
       extraSupported: ["search", "skip"],

@@ -12,22 +12,31 @@ async function getPostId(url) {
   const { data } = await axiosClient.get(url);
   const $ = cheerio.load(data);
 
-  const postId = $("div#player").attr("data-post-id") || null;
+  // VIP / iDrama
+  let postId = $("div#player").attr("data-post-id");
 
-  // Extract max EP from page title
+  // SundayDrama
+  if (!postId) {
+    const fanta = $('div[id="fanta"][data-post-id]').first();
+    if (fanta.length) {
+      postId = fanta.attr("data-post-id");
+    }
+  }
+
+  if (!postId) return null;
+
+  // Extract max EP from title
   const pageTitle = $("title").text();
   const maxEpMatch = pageTitle.match(/\[EP\s*(\d+)\]/i);
   const maxEp = maxEpMatch ? parseInt(maxEpMatch[1], 10) : null;
 
-  if (postId) {
-    URL_TO_POSTID.set(url, postId);
+  URL_TO_POSTID.set(url, postId);
 
-    if (maxEp) {
-      POST_INFO.set(postId, {
-        ...(POST_INFO.get(postId) || {}),
-        maxEp,
-      });
-    }
+  if (maxEp) {
+    POST_INFO.set(postId, {
+      ...(POST_INFO.get(postId) || {}),
+      maxEp,
+    });
   }
 
   return postId;

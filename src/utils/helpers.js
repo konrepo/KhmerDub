@@ -10,13 +10,14 @@ function extractVideoLinks(text) {
     /https?:\/\/[^\s"';<> ]+\.(?:m3u8|mp4)(?:\?[^\s"';<> ]+)?/gi;
 
   const okRegex =
-    /https?:\/\/ok\.ru\/videoembed\/\d+/gi;
+	/https?:\/\/ok\.ru\/(?:videoembed|video)\/\d+/gi;
 
   const playerRegex =
     /https?:\/\/phumikhmer\.vip\/player\.php\?id=\d+/gi;
 
   const directMatches = text.match(directRegex) || [];
-  const okMatches = text.match(okRegex) || [];
+  const okMatches = (text.match(okRegex) || [])
+	.map(u => u.replace("/video/", "/videoembed/"));
   const playerMatches = text.match(playerRegex) || [];
 
   return Array.from(new Set([

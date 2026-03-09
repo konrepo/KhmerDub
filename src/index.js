@@ -7,6 +7,7 @@ const sites = require("./sites/config");
 
 const ENGINES = {
   vip: engine,
+  sunday: engine,  
   idrama: engine,
   khmerave: khmerave,
   merlkon: khmerave
@@ -69,6 +70,106 @@ builder.defineCatalogHandler(async ({ id, extra }) => {
 
         const pageItems = await siteEngine.getCatalogItems(id, site, url);
         allItems = allItems.concat(pageItems);
+      }
+
+      const uniq = [...new Map(allItems.map((x) => [x.id, x])).values()];
+
+      return {
+        metas: uniq.map((item) => ({
+          id: item.id,
+          type: "series",
+          name: item.name,
+          poster: item.poster,
+          posterShape: "poster",
+        })),
+      };
+    }
+
+    // SundayDrama (Blogger): search + paging
+    if (id === "sunday") {
+      const axiosClient = require("./utils/fetch");
+      const cheerio = require("cheerio");
+      const { normalizePoster } = require("./utils/helpers"); 
+
+      const base = String(site.baseUrl || "").replace(/\/$/, "");
+
+      // Blogger search + home URLs
+      const startUrl = extra?.search
+        ? `${base}/search?q=${encodeURIComponent(extra.search)}&max-results=20`
+        : `${base}/?max-results=20`;
+
+      const WEBSITE_PAGE_SIZE = 20;  
+      const PAGES_PER_BATCH = 3;
+
+      const skip = Number(extra?.skip || 0);
+      const targetIndex = skip;     
+      const targetPage = Math.floor(targetIndex / WEBSITE_PAGE_SIZE) + 1;
+
+      // Will page forward using blogger "older posts" / updated-max URLs
+      let url = startUrl;
+      let currentPage = 1;
+      let allItems = [];
+
+      const headers = {
+        "User-Agent":
+          "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Mobile Safari/537.36",
+        Referer: `${base}/`,
+      };
+
+      // Aadvance to the target page (best-effort)
+      while (currentPage < targetPage && url) {
+        const { data } = await axiosClient.get(url, { headers });
+        const $ = cheerio.load(data);
+
+        // Blogger older link (sometimes present), else stop
+        const older =
+          $("a.blog-pager-older-link").attr("href") ||
+          $("#Blog1_blog-pager-older-link").attr("href") ||
+          "";
+
+        url = older ? older : null;
+        currentPage++;
+      }
+
+      // Fetch a few pages starting from targetPage
+      for (let i = 0; i < PAGES_PER_BATCH && url; i++) {
+        const { data } = await axiosClient.get(url, { headers });
+        const $ = cheerio.load(data);
+
+        // Sunday cards are <article class="blog-post ..."> ... <a class="entry-image-wrap" title="...">
+        const articles = $("article.blog-post").toArray();
+
+        for (const el of articles) {
+          const $el = $(el);
+
+          const aImg = $el.find("a.entry-image-wrap").first();
+          const link = aImg.attr("href") || $el.find("h2.entry-title a").attr("href") || "";
+          const title =
+            (aImg.attr("title") || "").trim() ||
+            ($el.find("h2.entry-title a").first().text() || "").trim();
+
+          if (!title || !link) continue;
+
+          const img =
+            $el.find("img.entry-thumb").attr("src") ||
+            aImg.find("span[data-src]").attr("data-src") ||
+            aImg.find("img").attr("src") ||
+            "";
+
+          allItems.push({
+            id: `sunday:${encodeURIComponent(link)}`,
+            name: title,
+            poster: normalizePoster(img),
+          });
+        }
+
+        // next page (updated-max / older)
+        const older =
+          $("a.blog-pager-older-link").attr("href") ||
+          $("#Blog1_blog-pager-older-link").attr("href") ||
+          "";
+
+        url = older ? older : null;
       }
 
       const uniq = [...new Map(allItems.map((x) => [x.id, x])).values()];
