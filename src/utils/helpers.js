@@ -10,20 +10,30 @@ function extractVideoLinks(text) {
     /https?:\/\/[^\s"';<> ]+\.(?:m3u8|mp4)(?:\?[^\s"';<> ]+)?/gi;
 
   const okRegex =
-	/https?:\/\/ok\.ru\/(?:videoembed|video)\/\d+/gi;
+    /https?:\/\/ok\.ru\/(?:videoembed|video)\/\d+/gi;
 
   const playerRegex =
     /https?:\/\/phumikhmer\.vip\/player\.php\?id=\d+/gi;
 
+  const fileRegex =
+    /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
+
   const directMatches = text.match(directRegex) || [];
   const okMatches = (text.match(okRegex) || [])
-	.map(u => u.replace("/video/", "/videoembed/"));
+    .map(u => u.replace("/video/", "/videoembed/"));
   const playerMatches = text.match(playerRegex) || [];
+
+  const fileMatches = [];
+  let match;
+  while ((match = fileRegex.exec(text)) !== null) {
+    fileMatches.push(match[1]);
+  }
 
   return Array.from(new Set([
     ...directMatches,
     ...okMatches,
-    ...playerMatches
+    ...playerMatches,
+    ...fileMatches
   ]));
 }
 
