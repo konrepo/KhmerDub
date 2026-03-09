@@ -22,6 +22,16 @@ async function getPostId(url) {
       postId = fanta.attr("data-post-id");
     }
   }
+  
+  // SundayDrama fallback
+  if (!postId) {
+    const match = data.match(
+      /blogger\.com\/feeds\/\d+\/posts\/default\/(\d+)\?alt=json/i
+    );
+    if (match) {
+      postId = match[1];
+    }
+  }  
 
   if (!postId) return null;
 
@@ -96,6 +106,30 @@ async function getStreamDetail(postId) {
 ========================= */
 async function getEpisodes(prefix, seriesUrl) {
   const postId = await getPostId(seriesUrl);
+  console.log("POST ID:", postId);
+
+  // Sunday playlist
+  if (!postId && prefix === "sunday") {
+    const { data } = await axiosClient.get(seriesUrl);
+
+    const fileRegex =
+      /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
+
+    const urls = [];
+    let match;
+    while ((match = fileRegex.exec(data)) !== null) {
+      urls.push(match[1]);
+    }
+
+    return urls.map((url, index) => ({
+      id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
+      title: "Sunday Episode",
+      season: 1,
+      episode: index + 1,
+      thumbnail: "",
+      released: new Date().toISOString(),
+    }));
+  }
 
   if (!postId) {
     return [];
