@@ -192,57 +192,28 @@ async function resolvePlayerUrl(playerUrl) {
    STREAM
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
-
-  console.log("GET STREAM CALLED:", prefix, episode);
-
-  if (prefix === "sunday") {
-    console.log("SUNDAY PATH");
-
-    const info = await getSundayPlaylist(seriesUrl);
-
-    if (!info.urls.length) {
-      console.log("NO SUNDAY URLS FOUND");
-      return null;
-    }
-
-    const epIndex = Number(episode) - 1;
-    let fileUrl = info.urls[epIndex];
-
-    if (!fileUrl) {
-      console.log("NO FILE URL FOR EP:", episode);
-      return null;
-    }
-
-    console.log("SUNDAY FILE URL:", fileUrl);
-    return { url: fileUrl };
-  }
-
   const postId = await getPostId(seriesUrl);
-  console.log("POST ID INSIDE STREAM:", postId);
-
-  if (!postId) {
-    console.log("NO POST ID");
-    return null;
-  }
+  if (!postId) return null;
 
   const detail = await getStreamDetail(postId);
-  console.log("DETAIL:", detail);
+  if (!detail) return null;
 
-  if (!detail) {
-    console.log("NO DETAIL");
-    return null;
+  let url = detail.urls[episode - 1];
+  if (!url) return null;
+
+  if (url.includes("player.php")) {
+    const resolved = await resolvePlayerUrl(url);
+    if (!resolved) return null;
+    url = resolved;
   }
 
-  let url = detail.urls[Number(episode) - 1];
-
-  if (!url) {
-    console.log("NO URL FOR EP:", episode);
-    return null;
-  }
-
-  console.log("RAW URL:", url);
-
-  return { url };
+  return {
+    url,
+    name: "KhmerDub",
+    title: `Episode ${episode}`,
+    type: url.includes(".m3u8") ? "hls" : undefined,
+    behaviorHints: { group: "khmerdub" },
+  };
 }
 
 /* =========================
