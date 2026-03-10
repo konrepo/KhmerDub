@@ -111,6 +111,12 @@ async function getEpisodes(prefix, seriesUrl) {
   // Sunday playlist
   if (!postId && prefix === "sunday") {
     const { data } = await axiosClient.get(seriesUrl);
+	
+    const $ = cheerio.load(data);	
+	const pagePoster =
+      $("meta[property='og:image']").attr("content") ||
+	  $("link[rel='image_src']").attr("href") ||
+	  "";
 
     const fileRegex =
       /file\s*:\s*["'](https?:\/\/[^"']+\.mp4(?:\?[^"']+)?)["']/gi;
@@ -123,10 +129,10 @@ async function getEpisodes(prefix, seriesUrl) {
 
     return urls.map((url, index) => ({
       id: `${prefix}:${encodeURIComponent(seriesUrl)}:1:${index + 1}`,
-      title: "Sunday Episode",
+      title: `Episode ${index + 1}`,
       season: 1,
       episode: index + 1,
-      thumbnail: "",
+      thumbnail: normalizePoster(pagePoster),
       released: new Date().toISOString(),
     }));
   }
@@ -193,6 +199,37 @@ async function resolvePlayerUrl(playerUrl) {
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
   const postId = await getPostId(seriesUrl);
+  // Sunday fallback streaming
+  if (prefix === "sunday" && !postId) {
+
+    const { data } = await axiosClient.get(seriesUrl, {
+      headers: {
+        "User-Agent": "Mozilla/5.0",
+        Referer: seriesUrl
+      }
+    });
+
+    const links = extractVideoLinks(data);
+    const url = links[episode - 1];
+    if (!url) return null;
+
+    return {
+      url,
+      name: "KhmerDub",
+      title: `Episode ${episode}`,
+      type: url.includes(".m3u8") ? "hls" : undefined,
+      behaviorHints: {
+        group: "khmerdub",
+        proxyHeaders: {
+          request: {
+            Referer: seriesUrl,
+            Origin: "https://www.sundaydrama.com"
+          }
+        }
+      }
+    };
+  }
+
   if (!postId) return null;
 
   const detail = await getStreamDetail(postId);
