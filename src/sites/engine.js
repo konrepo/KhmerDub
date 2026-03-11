@@ -1,6 +1,6 @@
 const cheerio = require("cheerio");
 const axiosClient = require("../utils/fetch");
-const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle } = require("../utils/helpers");
+const { normalizePoster, extractVideoLinks, extractMaxEpFromTitle, extractOkIds } = require("../utils/helpers");
 const { URL_TO_POSTID, POST_INFO, BLOG_IDS } = require("../utils/cache");
 
 /* =========================
@@ -34,11 +34,19 @@ async function getPostId(url) {
   }  
 
   if (!postId) return null;
-
-  // Extract max EP from title
+  
+  // Extract max EP from title OR from SundayDrama "episode/END.xx"
   const pageTitle = $("title").text();
-  const maxEpMatch = pageTitle.match(/\[EP\s*(\d+)\]/i);
-  const maxEp = maxEpMatch ? parseInt(maxEpMatch[1], 10) : null;
+  let maxEp = extractMaxEpFromTitle(pageTitle);
+
+  // SundayDrama often has: <b>episode/END.70</b>
+  if (!maxEp) {
+    const epText =
+      $('b:contains("episode/")').first().text() || "";
+
+    const m = epText.match(/episode\/(?:END\.)?(\d+)/i);
+    if (m) maxEp = parseInt(m[1], 10);
+  } 
 
   URL_TO_POSTID.set(url, postId);
 
@@ -74,7 +82,18 @@ async function fetchFromBlog(blogId, postId) {
 
     thumbnail = normalizePoster(thumbnail);
 
-    const urls = extractVideoLinks(content);
+    let urls = extractVideoLinks(content);
+
+    // If blogger post stores OK.ru IDs (like: 9488...; 9488...; {embed=ok})
+    if (!urls.length) {
+      const hasOkEmbed = /\{embed\s*=\s*ok\}/i.test(content);
+      const okIds = extractOkIds(content);
+
+      if (hasOkEmbed && okIds.length) {
+		urls = okIds.map(id => `https://ok.ru/videoembed/${id}`);
+      }
+    }
+
     if (!urls.length) return null;
 
     return { title, thumbnail, urls };
@@ -195,6 +214,34 @@ async function resolvePlayerUrl(playerUrl) {
 }
 
 /* =========================
+   RESOLVE OK
+========================= */
+async function resolveOkEmbed(embedUrl) {
+  const { data } = await axiosClient.get(embedUrl, {
+    headers: {
+      "User-Agent": "Mozilla/5.0",
+      Referer: "https://ok.ru/"
+    }
+  });
+
+  // Try both escaped and non-escaped &quot; variants
+  const hlsMatch =
+    data.match(/\\&quot;ondemandHls\\&quot;:\\&quot;(https:\/\/[^"]+?\.m3u8)/) ||
+    data.match(/&quot;ondemandHls&quot;:&quot;(https:\/\/[^"]+?\.m3u8)/);
+
+  if (!hlsMatch) {
+    console.log("OK: ondemandHls not found");
+    return null;
+  }
+
+  return hlsMatch[1]
+    .replace(/\\u0026/g, "&")
+    .replace(/\\\//g, "/")
+    .replace(/&amp;/g, "&")
+    .replace(/\\&quot;.*/g, ""); // safety: cut anything after if it appears
+}
+
+/* =========================
    STREAM
 ========================= */
 async function getStream(prefix, seriesUrl, episode) {
@@ -213,43 +260,84 @@ async function getStream(prefix, seriesUrl, episode) {
     const url = links[episode - 1];
     if (!url) return null;
 
+    const isOk = /ok\.ru|okcdn\.ru/i.test(url);
+
     return {
       url,
       name: "KhmerDub",
       title: `Episode ${episode}`,
       type: url.includes(".m3u8") ? "hls" : undefined,
-      behaviorHints: {
-        group: "khmerdub",
-        proxyHeaders: {
-          request: {
-            Referer: seriesUrl,
-            Origin: "https://www.sundaydrama.com"
-          }
-        }
-      }
+      behaviorHints: isOk 
+		? {
+			group: "khmerdub",
+			proxyHeaders: {
+			  request: {
+				Referer: "https://ok.ru/",
+				Origin: "https://ok.ru",
+			  },
+			},
+		}
+      : { group: "khmerdub" },
     };
   }
 
   if (!postId) return null;
 
   const detail = await getStreamDetail(postId);
-  if (!detail) return null;
+  if (!detail) {
+	  console.log("No detail found for postId:", postId);
+	  return null;
+  }
+  
+  console.log("DETAIL URLS:", detail.urls);
 
   let url = detail.urls[episode - 1];
-  if (!url) return null;
-
-  if (url.includes("player.php")) {
-    const resolved = await resolvePlayerUrl(url);
-    if (!resolved) return null;
-    url = resolved;
+  if (!url) {
+	  console.log("No URL for episode:", episode);
+	  return null;
   }
 
+  // Resolve player.php first
+  if (url.includes("player.php")) {
+	  const resolved = await resolvePlayerUrl(url);
+	  if (!resolved) {
+		  console.log("Player resolve failed");
+		  return null;
+	  }
+	  url = resolved;
+  }
+
+  // Resolve OK embed page
+  if (url.includes("ok.ru/videoembed/")) {
+	  const resolved = await resolveOkEmbed(url);
+	  if (!resolved) {
+		  console.log("OK embed resolve failed");
+		  return null;
+	  }
+	  url = resolved;
+  }
+
+  console.log("Final URL:", url);
+
+  const isOk = /ok\.ru|okcdn\.ru/i.test(url);
+  console.log("Is OK stream:", isOk);
+
   return {
-    url,
-    name: "KhmerDub",
-    title: `Episode ${episode}`,
-    type: url.includes(".m3u8") ? "hls" : undefined,
-    behaviorHints: { group: "khmerdub" },
+	  url,
+	  name: "KhmerDub",
+	  title: `Episode ${episode}`,
+	  type: url.includes(".m3u8") ? "hls" : undefined,
+	  behaviorHints: isOk
+		  ? {
+			  group: "khmerdub",
+			  proxyHeaders: {
+				  request: {
+					  Referer: "https://ok.ru/",
+					  Origin: "https://ok.ru"
+				  }
+			  }
+		  }
+		  : { group: "khmerdub" }
   };
 }
 
